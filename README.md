@@ -42,6 +42,20 @@ Klariqo uses our revolutionary **Modular Voice Response System** to create the m
 - Logs every conversation for analysis and improvement
 - **Multi-telephony support** (Twilio + Exotel)
 
+## 🔄 Adapting to New Industries
+
+**Want to use this system for hotels, hospitals, restaurants, or any other industry?**
+
+📖 **See [CLIENT_ADAPTATION_GUIDE.md](CLIENT_ADAPTATION_GUIDE.md)** for complete step-by-step instructions to adapt this system from schools to any new industry.
+
+The guide covers:
+- ✅ **Content planning** for new industries (hotels, hospitals, etc.)
+- ✅ **Audio file creation** and management workflows  
+- ✅ **Conversation logic** updates for different audiences
+- ✅ **System configuration** changes required
+- ✅ **Testing and validation** procedures
+- ✅ **Industry-specific examples** with sample scripts
+
 ## 🏗️ Architecture
 
 ```
