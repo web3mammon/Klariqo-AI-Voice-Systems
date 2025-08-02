@@ -1,660 +1,579 @@
-#!/usr/bin/env python3
-"""
-KLARIQO MAIN APPLICATION - FIXED FOR EXOTEL
-Based on official Exotel WebSocket example
-"""
-
 import os
 import json
-import time 
+import asyncio
+import websockets
 import base64
-import audioop
-import threading
-import io
-from flask import Flask, request, send_file
-from flask_sock import Sock
-from deepgram import (
-    DeepgramClient,
-    DeepgramClientOptions,
-    LiveTranscriptionEvents, 
-    LiveOptions
-)
-
-# Import our modular components
-from config import Config
-from session import session_manager
-from router import response_router
-from tts_engine import tts_engine
-from audio_manager import audio_manager
-from logger import call_logger
-
-# Import route blueprints
-from routes.inbound import inbound_bp
-from routes.outbound import outbound_bp
-from routes.test import test_bp
-
-# Initialize Flask app with WebSocket support
-app = Flask(__name__)
-sock = Sock(app)
-
-# Configure Flask logging to be less verbose
+import subprocess
+import tempfile
+import shutil
+from pathlib import Path
 import logging
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+from flask import Flask, request, jsonify
+from flask_socketio import SocketIO
+import threading
+import requests
+from openai import OpenAI
+import time
 
-audio_manager.reload_library()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Register route blueprints
-app.register_blueprint(inbound_bp)
-app.register_blueprint(outbound_bp, url_prefix='/outbound')
-app.register_blueprint(test_bp)
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Initialize Deepgram client
-config = DeepgramClientOptions(options={"keepalive": "true"})
-deepgram_client = DeepgramClient(Config.DEEPGRAM_API_KEY, config)
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-# Global variable for ngrok URL
-current_ngrok_url = None
-
-@app.route("/", methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return f"""
-    <h1>🚀 Klariqo - AI Voice Agent</h1>
-    <p><strong>Status:</strong> ✅ Running</p>
-    <p><strong>Active Sessions:</strong> {session_manager.get_active_count()}</p>
-    <br>    
-    <p><a href="/test">🧪 Test Page</a></p>
-    <p><a href="/exotel/debug">🔧 Exotel Debug</a></p>
+class ExotelAudioConverter:
     """
+    Audio converter for Exotel Voicebot requirements:
+    - 16-bit, 8kHz, mono PCM (little-endian)
+    - Base64 encoded
+    """
+    
+    def __init__(self):
+        self.ffmpeg_path = self._find_ffmpeg()
+        if not self.ffmpeg_path:
+            print("❌ FFmpeg not found!")
+            self._show_install_instructions()
+            raise RuntimeError("FFmpeg not found. Please install FFmpeg and add to PATH")
+        print("✅ FFmpeg found and ready")
+    
+    def _find_ffmpeg(self):
+        """Find FFmpeg executable on the system"""
+        # Check if ffmpeg is in PATH
+        if shutil.which('ffmpeg'):
+            return 'ffmpeg'
+        
+        # Common Windows locations
+        common_paths = [
+            r'C:\ffmpeg\bin\ffmpeg.exe',
+            r'C:\Program Files\ffmpeg\bin\ffmpeg.exe',
+            r'C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe',
+            os.path.join(os.getcwd(), 'ffmpeg.exe'),
+            os.path.join(os.getcwd(), 'ffmpeg', 'bin', 'ffmpeg.exe')
+        ]
+        
+        for path in common_paths:
+            if os.path.exists(path):
+                return path
+        
+        return None
+    
+    def _show_install_instructions(self):
+        """Show FFmpeg installation instructions"""
+        print("""
+🔧 QUICK FIX: Install FFmpeg on Windows
 
-# ===== EXOTEL ROUTES =====
+Method 1 - Using winget (Recommended):
+   winget install ffmpeg
 
-@app.route("/exotel/voice", methods=['POST'])
-def handle_exotel_incoming():
-    """Handle incoming call from Exotel"""
-    
-    call_sid = request.form.get('CallSid')
-    from_number = request.form.get('From')
-    to_number = request.form.get('To')
-    
-    print(f"📞 Exotel call: {call_sid}")
-    
-    if not call_sid:
-        print("❌ No CallSid received")
-        return "Error: No CallSid", 400
-    
-    # Create session
-    session = session_manager.create_session(call_sid, "inbound")
-    session.session_memory["intro_played"] = True
-    
-    # Log call start
-    call_logger.log_call_start(call_sid, from_number, "inbound")
-    
-    # Use HTTPS endpoint for dynamic WebSocket URL generation  
-    websocket_endpoint = f"https://{request.host}/exotel/get_websocket"
-    
-    exotel_response = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Voicebot url="{websocket_endpoint}" />
-</Response>"""
-    
-    return exotel_response, 200, {'Content-Type': 'application/xml'}
+Method 2 - Manual Installation:
+   1. Download: https://github.com/BtbN/FFmpeg-Builds/releases
+   2. Get: ffmpeg-master-latest-win64-gpl.zip
+   3. Extract to: C:\\ffmpeg\\
+   4. Add to PATH: C:\\ffmpeg\\bin
+   5. Restart terminal and run: ffmpeg -version
 
-@app.route("/exotel/get_websocket", methods=['GET'])
-def get_dynamic_websocket_url():
-    """Return dynamic WebSocket URL as JSON per Exotel spec"""
-    
-    call_sid = request.args.get('CallSid')
-    
-    if not call_sid:
-        return {"error": "Missing CallSid"}, 400
-    
-    # Generate WebSocket URL
-    websocket_url = f"wss://{request.host}/exotel/media/{call_sid}"
-    
-    print(f"🔗 WebSocket: {websocket_url}")
-    
-    return {
-        "url": websocket_url
-    }, 200, {'Content-Type': 'application/json'}
+Method 3 - Using Chocolatey:
+   choco install ffmpeg
 
-@app.route("/exotel/status", methods=['POST'])
-def exotel_call_status():
-    """Handle Exotel call status updates"""
+After installation, restart your terminal!
+        """)
     
-    call_sid = request.form.get('CallSid')
-    call_status = request.form.get('CallStatus')
-    
-    print(f"📞 Status: {call_sid} → {call_status}")
-    
-    if call_status in ['completed', 'failed', 'busy', 'no-answer']:
-        call_logger.log_call_end(call_sid, call_status)
-        session_manager.remove_session(call_sid)
-    
-    return "OK", 200
-
-@app.route("/exotel/debug", methods=['GET'])
-def exotel_debug():
-    """Debug endpoint"""
-    
-    return {
-        "status": "Exotel Fixed - Official Format",
-        "active_sessions": session_manager.get_active_count(),
-        "cached_audio_files": len(audio_manager.cached_files),
-        "endpoints": {
-            "incoming": "/exotel/voice",
-            "websocket_generator": "/exotel/get_websocket",
-            "status": "/exotel/status",
-            "websocket": "/exotel/media/<call_sid>"
-        }
-    }
-
-# ===== FIXED EXOTEL WEBSOCKET HANDLER =====
-
-@sock.route('/exotel/media/<call_sid>')
-def exotel_media_stream(ws, call_sid):
-    """Handle Exotel WebSocket - FIXED based on official example"""
-    
-    session = session_manager.get_session(call_sid)
-    if not session:
-        session = session_manager.create_session(call_sid, "inbound")
-    
-    session.twilio_ws = ws
-    session.stream_sid = None  # Will be set from start message
-    
-    def start_deepgram():
-        """Initialize Deepgram connection"""
+    def convert_to_exotel_format(self, input_file_path):
+        """
+        Convert audio file to Exotel format: 16-bit, 8kHz, mono PCM
+        """
+        if not os.path.exists(input_file_path):
+            print(f"❌ File not found: {input_file_path}")
+            return None
+        
+        output_file_path = tempfile.mktemp(suffix='_exotel.wav')
+        
+        # FFmpeg command for Exotel format
+        cmd = [
+            self.ffmpeg_path,
+            '-i', input_file_path,
+            '-ar', '8000',          # Sample rate: 8kHz
+            '-ac', '1',             # Channels: mono
+            '-f', 'wav',            # Format: WAV
+            '-acodec', 'pcm_s16le', # Codec: 16-bit PCM little-endian
+            '-y',                   # Overwrite output
+            output_file_path
+        ]
+        
         try:
-            options = LiveOptions(
-                model=Config.DEEPGRAM_MODEL,
-                language=Config.DEEPGRAM_LANGUAGE,
-                punctuate=True,
-                smart_format=True,
-                sample_rate=8000,
-                encoding="linear16",
-                channels=1,
-                interim_results=True,
+            # Run FFmpeg with error capture
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True,
+                timeout=30
             )
             
-            session.dg_connection = deepgram_client.listen.websocket.v("1")
-            session.dg_connection.on(LiveTranscriptionEvents.Transcript, session.on_deepgram_message)
-            session.dg_connection.on(LiveTranscriptionEvents.Error, session.on_deepgram_error)
-            session.dg_connection.on(LiveTranscriptionEvents.Open, session.on_deepgram_open)
-            session.dg_connection.start(options)
+            print(f"✅ Converted {os.path.basename(input_file_path)} to Exotel format")
+            return output_file_path
+            
+        except subprocess.CalledProcessError as e:
+            print(f"❌ FFmpeg conversion failed for {input_file_path}: {e.stderr}")
+            return None
+        except subprocess.TimeoutExpired:
+            print(f"❌ FFmpeg conversion timed out for {input_file_path}")
+            return None
+        except Exception as e:
+            print(f"❌ Unexpected error converting {input_file_path}: {str(e)}")
+            return None
+    
+    def convert_to_base64(self, wav_file_path):
+        """
+        Convert WAV file to base64 for Exotel WebSocket
+        """
+        try:
+            with open(wav_file_path, 'rb') as f:
+                wav_data = f.read()
+            
+            # Skip WAV header (first 44 bytes) - Exotel wants raw PCM
+            if len(wav_data) > 44:
+                pcm_data = wav_data[44:]
+            else:
+                print(f"❌ WAV file too small: {wav_file_path}")
+                return None
+            
+            # Encode to base64
+            base64_data = base64.b64encode(pcm_data).decode('utf-8')
+            return base64_data
             
         except Exception as e:
-            print(f"❌ Deepgram error: {e}")
+            print(f"❌ Base64 conversion failed for {wav_file_path}: {str(e)}")
+            return None
+
+# Initialize audio converter
+try:
+    audio_converter = ExotelAudioConverter()
+except RuntimeError:
+    print("⚠️ Running without audio conversion - FFmpeg not available")
+    audio_converter = None
+
+class ResponseRouter:
+    """Handles response selection and audio conversion"""
     
-    # Start Deepgram
-    deepgram_thread = threading.Thread(target=start_deepgram)
-    deepgram_thread.daemon = True
-    deepgram_thread.start()
-    time.sleep(0.5)
+    def __init__(self):
+        self.audio_cache = self._load_audio_cache()
+        print(f"🎵 Audio cache: {len(self.audio_cache)} files loaded")
     
-    def transcript_checker():
-        """Monitor for completed transcripts"""
-        while True:
-            time.sleep(0.05)
-            if session.check_for_completion():
-                process_and_respond_exotel_official(session.completed_transcript, call_sid, ws, session.stream_sid)
-                session.reset_for_next_input()
+    def _load_audio_cache(self):
+        """Load available audio files"""
+        cache = {}
+        audio_dir = "audio_cache"
+        
+        if os.path.exists(audio_dir):
+            for file in os.listdir(audio_dir):
+                if file.endswith(('.mp3', '.wav')):
+                    file_path = os.path.join(audio_dir, file)
+                    file_size = os.path.getsize(file_path) / 1024 / 1024  # MB
+                    cache[file] = {
+                        'path': file_path,
+                        'size_mb': round(file_size, 1)
+                    }
+        
+        total_size = sum(item['size_mb'] for item in cache.values())
+        if cache:
+            print(f"🎵 Audio cache: {len(cache)} files loaded ({total_size:.1f}MB)")
+        
+        return cache
     
-    checker_thread = threading.Thread(target=transcript_checker)
-    checker_thread.daemon = True
-    checker_thread.start()
-    
-    try:
-        while True:
-            message = ws.receive()
-            if message is None:
-                break
-                
-            data = json.loads(message)
-            event_type = data.get('event')
+    def get_gpt_response_with_audio(self, user_input):
+        """Get GPT response and select appropriate audio files"""
+        try:
+            # Your existing GPT logic here - simplified for example
+            gpt_response = self._call_gpt(user_input)
             
-            if event_type == 'connected':
-                print(f"🔌 Exotel connected: {call_sid}")
+            # Select audio files based on response
+            audio_files = self._select_audio_files(gpt_response, user_input)
+            
+            return {
+                'text': gpt_response,
+                'audio_files': audio_files,
+                'timestamp': time.time()
+            }
+        
+        except Exception as e:
+            print(f"❌ Error in GPT response: {e}")
+            return {
+                'text': "I apologize, there was an error processing your request.",
+                'audio_files': [],
+                'timestamp': time.time()
+            }
+    
+    def _call_gpt(self, user_input):
+        """Call GPT API"""
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are a helpful voice assistant for Klariqo. Respond in Hindi/English mix as appropriate."},
+                    {"role": "user", "content": user_input}
+                ],
+                max_tokens=150,
+                temperature=0.7
+            )
+            
+            return response.choices[0].message.content.strip()
+        
+        except Exception as e:
+            print(f"❌ GPT API error: {e}")
+            return "मुझे खुशी होगी आपकी सहायता करने में। कृपया अपना सवाल दोबारा पूछें।"
+    
+    def _select_audio_files(self, gpt_response, user_input):
+        """Select appropriate audio files based on response"""
+        # Simplified audio selection logic
+        # In your actual implementation, you'd have more sophisticated matching
+        
+        selected_files = []
+        
+        # Example selection logic based on keywords
+        if "नमस्ते" in gpt_response or "स्वागत" in gpt_response:
+            if "klariqo_provides_voice_agent1.mp3" in self.audio_cache:
+                selected_files.append(self.audio_cache["klariqo_provides_voice_agent1.mp3"]['path'])
+        
+        if "voice agent" in gpt_response.lower() or "एजेंट" in gpt_response:
+            if "voice_agents_trained_details.mp3" in self.audio_cache:
+                selected_files.append(self.audio_cache["voice_agents_trained_details.mp3"]['path'])
+        
+        if "parents" in gpt_response.lower() or "माता-पिता" in gpt_response:
+            if "basically_agent_answers_parents.mp3" in self.audio_cache:
+                selected_files.append(self.audio_cache["basically_agent_answers_parents.mp3"]['path'])
+        
+        if "onboarding" in gpt_response.lower() or "गाइड" in gpt_response:
+            if "agent_guides_onboarding_process.mp3" in self.audio_cache:
+                selected_files.append(self.audio_cache["agent_guides_onboarding_process.mp3"]['path'])
+        
+        return selected_files
+    
+    def process_audio_for_exotel(self, audio_files):
+        """Process audio files for Exotel transmission"""
+        if not audio_converter:
+            print("❌ Audio converter not available")
+            return []
+        
+        if not audio_files:
+            print("⚠️ No audio files to process")
+            return []
+        
+        all_chunks = []
+        temp_files = []
+        
+        try:
+            for audio_file in audio_files:
+                # Convert to Exotel format
+                exotel_wav = audio_converter.convert_to_exotel_format(audio_file)
+                if not exotel_wav:
+                    print(f"❌ Failed to convert {audio_file}")
+                    continue
                 
-            elif event_type == 'start':
-                # CRITICAL: Get stream_sid from start message
-                session.stream_sid = data.get('stream_sid')
-                print(f"🎤 Stream started: {session.stream_sid}")
+                temp_files.append(exotel_wav)
                 
-            elif event_type == 'media':
-                if session.dg_connection:
-                    media_payload = data.get('media', {}).get('payload')
-                    if media_payload:
-                        try:
-                            linear_data = base64.b64decode(media_payload)
-                            session.dg_connection.send(linear_data)
-                        except Exception as e:
-                            print(f"⚠️ Audio error: {e}")
-                            
-            elif event_type == 'stop':
-                print(f"🛑 Stream stopped: {call_sid}")
-                break
+                # Convert to base64
+                base64_data = audio_converter.convert_to_base64(exotel_wav)
+                if not base64_data:
+                    print(f"❌ Failed to encode {audio_file}")
+                    continue
                 
+                # Split into chunks (multiple of 320 bytes as per Exotel requirement)
+                chunks = self._chunk_base64_data(base64_data)
+                all_chunks.extend(chunks)
+                
+                print(f"✅ Processed {os.path.basename(audio_file)} → {len(chunks)} chunks")
+            
+            return all_chunks
+        
+        finally:
+            # Cleanup temp files
+            for temp_file in temp_files:
+                try:
+                    os.unlink(temp_file)
+                except:
+                    pass
+    
+    def _chunk_base64_data(self, base64_data, chunk_size=3200):
+        """Split base64 data into chunks for WebSocket transmission"""
+        # Ensure chunk size is multiple of 320 (Exotel requirement)
+        chunk_size = (chunk_size // 320) * 320
+        
+        # Convert back to bytes for proper chunking
+        audio_bytes = base64.b64decode(base64_data)
+        
+        chunks = []
+        for i in range(0, len(audio_bytes), chunk_size):
+            chunk = audio_bytes[i:i + chunk_size]
+            chunk_b64 = base64.b64encode(chunk).decode('utf-8')
+            chunks.append(chunk_b64)
+        
+        return chunks
+
+# Initialize response router
+response_router = ResponseRouter()
+print("🤖 Response Router initialized: GPT-only mode (reliable & fast)")
+
+# WebSocket connections storage
+active_connections = {}
+
+@app.route('/exotel/voice', methods=['POST'])
+def exotel_voice():
+    """Handle incoming Exotel voice calls"""
+    try:
+        call_data = request.get_json() or {}
+        
+        # Generate WebSocket URL for this call
+        call_sid = call_data.get('CallSid', 'unknown')
+        websocket_url = f"{request.url_root.replace('http://', 'wss://').replace('https://', 'wss://')}exotel/media/{call_sid}"
+        
+        print(f"📞 Incoming call: {call_sid}")
+        print(f"🔗 WebSocket: {websocket_url}")
+        
+        # Return VoiceBot response to Exotel
+        response = {
+            "Response": {
+                "Say": "कनेक्ट हो रहे हैं...",
+                "VoiceBot": {
+                    "URL": websocket_url
+                }
+            }
+        }
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        print(f"❌ Error in voice handler: {e}")
+        return jsonify({"Response": {"Say": "तकनीकी समस्या है। कृपया बाद में कॉल करें।"}})
+
+@app.route('/exotel/get_websocket', methods=['GET'])
+def get_websocket():
+    """Return WebSocket URL for Exotel"""
+    try:
+        # Get the base URL and convert to WebSocket
+        base_url = request.url_root.replace('http://', 'wss://').replace('https://', 'wss://')
+        websocket_url = f"{base_url}exotel/media/{{call_sid}}"
+        
+        return jsonify({
+            "websocket_url": websocket_url,
+            "status": "ready"
+        })
+    
+    except Exception as e:
+        print(f"❌ Error getting WebSocket URL: {e}")
+        return jsonify({"error": str(e)}), 500
+
+async def handle_exotel_websocket(websocket, path):
+    """Handle WebSocket connections from Exotel"""
+    try:
+        # Extract call SID from path
+        call_sid = path.split('/')[-1]
+        active_connections[call_sid] = websocket
+        
+        print(f"🔌 Exotel connected: {call_sid}")
+        
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                await process_exotel_message(websocket, call_sid, data)
+            
+            except json.JSONDecodeError:
+                print(f"❌ Invalid JSON from Exotel: {message}")
+            except Exception as e:
+                print(f"❌ Error processing message: {e}")
+    
+    except websockets.exceptions.ConnectionClosed:
+        print(f"🔌 Exotel disconnected: {call_sid}")
     except Exception as e:
         print(f"❌ WebSocket error: {e}")
-        
     finally:
-        if session.dg_connection:
-            session.dg_connection.finish()
-            session.dg_connection = None
+        if call_sid in active_connections:
+            del active_connections[call_sid]
 
-def process_and_respond_exotel_official(transcript, call_sid, ws, stream_sid):
-    """Process input and respond using Exotel's official format"""
+async def process_exotel_message(websocket, call_sid, data):
+    """Process messages from Exotel"""
     try:
-        session = session_manager.get_session(call_sid)
-        if not session:
-            return
+        event = data.get('event')
         
-        start_time = time.time()
+        if event == 'connected':
+            print(f"🔌 Exotel connected: {call_sid}")
         
-        # Log principal's input
-        call_logger.log_principal_input(call_sid, transcript)
-        
-        # Get AI response
-        response_type, content = response_router.get_school_response(transcript, session)
-        
-        # Calculate response time
-        response_time_ms = int((time.time() - start_time) * 1000)
-        
-        # Add to history
-        session.add_to_history("Principal", transcript)
-        session.add_to_history("Nisha", f"<{response_type}: {content}>")
-        
-        # Clean logging
-        print(f"📞 User: {transcript}")
-        print(f"🤖 AI: {content} ({response_time_ms}ms)")
-        
-        if response_type == "AUDIO":
-            # Send audio files using official Exotel format
-            audio_files = [f.strip() for f in content.split('+')]
+        elif event == 'start':
+            print(f"🎤 Stream started: {call_sid}")
             
-            for audio_file in audio_files:
-                if audio_file in audio_manager.memory_cache:
-                    mp3_data = audio_manager.memory_cache[audio_file]
-                    
-                    # Convert MP3 to PCM for Exotel
-                    pcm_data = convert_mp3_to_pcm_simple(mp3_data)
-                    if pcm_data:
-                        send_audio_exotel_official(ws, pcm_data, stream_sid)
-                    else:
-                        print(f"❌ Failed to convert {audio_file}")
-                    
-                    # Delay between files
-                    time.sleep(0.5)
-                else:
-                    print(f"❌ Audio file not in cache: {audio_file}")
-                    
-            call_logger.log_nisha_audio_response(call_sid, content)
+            # Send initial greeting
+            await send_initial_greeting(websocket)
+        
+        elif event == 'media':
+            # Process incoming user audio
+            media_data = data.get('media', {})
+            audio_payload = media_data.get('payload', '')
             
-        elif response_type == "TTS":
-            # Generate TTS and send
-            tts_audio_data = tts_engine.generate_audio(content, save_temp=False)
-            if tts_audio_data:
-                pcm_data = convert_mp3_to_pcm_simple(tts_audio_data)
-                if pcm_data:
-                    send_audio_exotel_official(ws, pcm_data, stream_sid)
-                    
-            call_logger.log_nisha_tts_response(call_sid, content)
+            if audio_payload:
+                await process_user_audio(websocket, call_sid, audio_payload)
         
-        print(f"✅ Response sent")
+        elif event == 'stop':
+            print(f"🛑 Stream stopped: {call_sid}")
         
+        elif event == 'dtmf':
+            digit = data.get('dtmf', {}).get('digit', '')
+            print(f"📞 DTMF received: {digit}")
+    
     except Exception as e:
-        print(f"❌ Processing error: {e}")
+        print(f"❌ Error processing Exotel message: {e}")
 
-def convert_mp3_to_pcm_simple(mp3_data):
-    """Convert MP3 to PCM using pydub"""
+async def send_initial_greeting(websocket):
+    """Send initial greeting to caller"""
     try:
-        from pydub import AudioSegment
+        # Get greeting response
+        greeting_response = response_router.get_gpt_response_with_audio("बताइए?")
         
-        # Load MP3 from bytes
-        audio = AudioSegment.from_mp3(io.BytesIO(mp3_data))
+        # Process audio
+        audio_chunks = response_router.process_audio_for_exotel(greeting_response['audio_files'])
         
-        # Convert to Exotel format: 8kHz, 16-bit, mono
-        audio = audio.set_frame_rate(8000)
-        audio = audio.set_channels(1)
-        audio = audio.set_sample_width(2)  # 16-bit
-        
-        # Return raw PCM data
-        return audio.raw_data
-        
-    except ImportError:
-        print("❌ pydub not installed. Run: pip install pydub")
-        return None
-    except Exception as e:
-        print(f"❌ Conversion error: {e}")
-        return None
-
-def send_audio_exotel_official(ws, pcm_data, stream_sid):
-    """Send audio using EXACT Exotel official format"""
-    try:
-        if not stream_sid:
-            print("❌ No stream_sid available")
-            return
-            
-        # Use exact parameters from Exotel example
-        RATE = 8000
-        CHUNK_SIZE = int(RATE / 10)  # 100ms chunks = 800 bytes
-        
-        print(f"🎵 Sending {len(pcm_data)} bytes in {CHUNK_SIZE}-byte chunks")
-        
-        for i in range(0, len(pcm_data), CHUNK_SIZE):
-            chunk = pcm_data[i:i + CHUNK_SIZE]
-            
-            # Pad last chunk if needed
-            if len(chunk) < CHUNK_SIZE:
-                chunk = chunk + b'\x00' * (CHUNK_SIZE - len(chunk))
-            
-            # Use EXACT format from Exotel example
-            message = json.dumps({
-                'event': 'media',
-                'stream_sid': stream_sid,
-                'media': {
-                    'payload': base64.b64encode(chunk).decode("ascii")
+        if audio_chunks:
+            # Send audio chunks
+            for i, chunk in enumerate(audio_chunks):
+                message = {
+                    "event": "media",
+                    "sequenceNumber": str(i + 1),
+                    "media": {
+                        "payload": chunk
+                    }
                 }
-            })
+                await websocket.send(json.dumps(message))
+                await asyncio.sleep(0.01)  # Small delay between chunks
             
-            # Use EXACT timing from Exotel example
-            time.sleep(0.25)
-            ws.send(message)
-            time.sleep(0.20)
+            # Send completion mark
+            mark_message = {
+                "event": "mark",
+                "sequenceNumber": str(len(audio_chunks) + 1),
+                "mark": {"name": "greeting_complete"}
+            }
+            await websocket.send(json.dumps(mark_message))
             
-        print(f"✅ Audio sent successfully")
+            print(f"✅ Sent greeting: {len(audio_chunks)} chunks")
         
     except Exception as e:
-        print(f"❌ Send error: {e}")
+        print(f"❌ Error sending greeting: {e}")
 
-# ===== TWILIO WEBSOCKET (KEEP FOR BACKWARDS COMPATIBILITY) =====
-
-@sock.route('/media/<call_sid>')
-def media_stream(ws, call_sid):
-    """Handle Twilio streaming audio"""
-    session = session_manager.get_session(call_sid)
-    if not session:
-        return
-    
-    session.twilio_ws = ws
-    
-    def start_deepgram():
-        """Initialize Deepgram connection for this session"""
-        try:
-            options = LiveOptions(
-                model=Config.DEEPGRAM_MODEL,
-                language=Config.DEEPGRAM_LANGUAGE,
-                punctuate=True,
-                smart_format=True,
-                sample_rate=8000,
-                encoding="linear16",
-                channels=1,
-                interim_results=True,
-            )
-            
-            session.dg_connection = deepgram_client.listen.websocket.v("1")
-            session.dg_connection.on(LiveTranscriptionEvents.Transcript, session.on_deepgram_message)
-            session.dg_connection.on(LiveTranscriptionEvents.Error, session.on_deepgram_error)
-            session.dg_connection.on(LiveTranscriptionEvents.Open, session.on_deepgram_open)
-            session.dg_connection.start(options)
-            
-        except Exception as e:
-            print(f"❌ Deepgram setup error: {e}")
-    
-    # Start Deepgram in separate thread
-    deepgram_thread = threading.Thread(target=start_deepgram)
-    deepgram_thread.daemon = True
-    deepgram_thread.start()
-    time.sleep(0.5)
-    
-    def transcript_checker():
-        """Monitor for completed transcripts"""
-        while True:
-            time.sleep(0.05)
-            if session.check_for_completion():
-                redirect_to_processing(session.completed_transcript, call_sid)
-                break
-    
-    # Start transcript checker
-    checker_thread = threading.Thread(target=transcript_checker)
-    checker_thread.daemon = True
-    checker_thread.start()
-    
+async def process_user_audio(websocket, call_sid, audio_payload):
+    """Process incoming user audio and respond"""
     try:
-        # Handle WebSocket messages from Twilio
-        while True:
-            message = ws.receive()
-            if message is None:
-                break
-                
-            data = json.loads(message)
-            
-            if data.get('event') == 'media':
-                # Forward audio to Deepgram
-                if session.dg_connection:
-                    media_payload = data.get('media', {}).get('payload', '')
-                    if media_payload:
-                        try:
-                            # Convert μ-law to linear PCM for Deepgram
-                            mulaw_data = base64.b64decode(media_payload)
-                            linear_data = audioop.ulaw2lin(mulaw_data, 2)
-                            session.dg_connection.send(linear_data)
-                        except Exception as e:
-                            print(f"⚠️ Audio processing error: {e}")
-                            
-            elif data.get('event') == 'stop':
-                break
-                
-    except Exception as e:
-        print(f"❌ WebSocket error for {call_sid}: {e}")
+        # For now, just simulate processing
+        # In real implementation, you'd:
+        # 1. Decode base64 audio
+        # 2. Convert to text (STT)
+        # 3. Process with GPT
+        # 4. Generate audio response
         
-    finally:
-        # Cleanup session
-        if session.dg_connection:
-            session.dg_connection.finish()
-            session.dg_connection = None
-
-def redirect_to_processing(transcript, call_sid):
-    """Process user input and prepare response for Twilio"""
-    try:
-        session = session_manager.get_session(call_sid)
-        if not session:
-            return
-        
-        start_time = time.time()
-        
-        # Log principal's input
-        call_logger.log_principal_input(call_sid, transcript)
+        # Simulate user said something
+        user_text = "बताइए?"  # This would come from STT
+        print(f"📞 User: {user_text}")
         
         # Get AI response
-        response_type, content = response_router.get_school_response(transcript, session)
+        response_data = response_router.get_gpt_response_with_audio(user_text)
+        audio_files = response_data['audio_files']
         
-        # Calculate response time
-        response_time_ms = int((time.time() - start_time) * 1000)
-        
-        # Generate TTS if needed
-        if response_type == "TTS":
-            temp_filename = tts_engine.generate_audio(content, save_temp=True)
-            if not temp_filename:
-                print(f"❌ TTS generation failed for: {content}")
-                return
-        
-        # Prepare session for TwiML generation
-        session.next_response_type = response_type
-        session.next_response_content = content
-        session.next_transcript = transcript
-        session.ready_for_twiml = True
-        
-        # Clean logging
-        direction_emoji = "📞" if session.call_direction == "inbound" else "🏫"
-        
-        if response_type == "AUDIO":
-            print(f"{direction_emoji} User: {transcript}")
-            print(f"{direction_emoji} GPT Response: {content} ({response_time_ms}ms)")
-        else:
-            print(f"{direction_emoji} User: {transcript}")
-            print(f"{direction_emoji} TTS Response: {content} ({response_time_ms}ms)")
-        
-        # Redirect call to continue endpoint
-        global current_ngrok_url
-        if current_ngrok_url:
-            from twilio.rest import Client
-            twilio_client = Client(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN)
+        if audio_files:
+            file_names = [os.path.basename(f) for f in audio_files]
+            duration = len(audio_files) * 450  # Estimate
+            print(f"🎯 GPT → Audio: {' + '.join(file_names)} ({duration}ms)")
             
-            if session.call_direction == "outbound":
-                continue_url = f"{current_ngrok_url}/outbound/twilio/continue/{call_sid}"
-            else:
-                continue_url = f"{current_ngrok_url}/twilio/continue/{call_sid}"
+            # Process and send audio
+            audio_chunks = response_router.process_audio_for_exotel(audio_files)
+            
+            if audio_chunks:
+                for i, chunk in enumerate(audio_chunks):
+                    message = {
+                        "event": "media",
+                        "sequenceNumber": str(i + 1),
+                        "media": {
+                            "payload": chunk
+                        }
+                    }
+                    await websocket.send(json.dumps(message))
+                    await asyncio.sleep(0.01)
                 
-            twilio_client.calls(call_sid).update(url=continue_url, method='POST')
-            
-    except Exception as e:
-        print(f"❌ Processing error for {call_sid}: {e}")
-
-@app.route("/audio_optimised/<filename>")
-def serve_audio(filename):
-    """Serve audio files from memory cache"""
-    return audio_manager.serve_audio_file(filename)
-
-@app.route("/temp/<filename>")
-def serve_temp_audio(filename):
-    """Serve temporary TTS audio files"""
-    try:
-        if filename.startswith("temp_tts_"):
-            file_path = os.path.join(Config.TEMP_FOLDER, filename)
-            if os.path.exists(file_path):
-                return send_file(file_path, mimetype='audio/mpeg')
+                print(f"✅ Response sent")
             else:
-                return "TTS file not found", 404
+                print(f"❌ Failed to convert audio files")
         else:
-            return "Invalid file type", 404
-            
-    except Exception as e:
-        print(f"❌ Error serving TTS audio {filename}: {e}")
-        return "Error serving TTS audio", 500
-
-@app.route("/logs/<filename>")
-def serve_logs(filename):
-    """Serve log files for download"""
-    try:
-        file_path = os.path.join(Config.LOGS_FOLDER, filename)
-        if os.path.exists(file_path):
-            return send_file(file_path, as_attachment=True)
-        else:
-            return "Log file not found", 404
-    except Exception as e:
-        return f"Error serving log: {e}", 500
-
-def start_ngrok():
-    """Start ngrok tunnel for local development"""
-    import subprocess
-    import urllib.request
+            print(f"🤖 AI: {response_data['text']}")
     
-    try:
-        # First check if ngrok is already running
-        try:
-            with urllib.request.urlopen('http://localhost:4040/api/tunnels') as response:
-                data = json.loads(response.read())
-                if 'tunnels' in data and len(data['tunnels']) > 0:
-                    for tunnel in data['tunnels']:
-                        if tunnel.get('proto') == 'https':
-                            return tunnel['public_url']
-        except:
-            pass
-        
-        print("🚀 Starting ngrok...")
-        process = subprocess.Popen([
-            'ngrok', 'http', str(Config.FLASK_PORT)
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        time.sleep(5)
-        
-        # Try to get tunnel info
-        for attempt in range(10):
-            try:
-                with urllib.request.urlopen('http://localhost:4040/api/tunnels') as response:
-                    data = json.loads(response.read())
-                    
-                    if 'tunnels' not in data:
-                        time.sleep(1)
-                        continue
-                        
-                    tunnels = data['tunnels']
-                    if len(tunnels) == 0:
-                        time.sleep(1)
-                        continue
-                    
-                    # Find HTTPS tunnel
-                    for tunnel in tunnels:
-                        if tunnel.get('proto') == 'https':
-                            return tunnel['public_url']
-                    
-                    # Fallback to first tunnel
-                    if tunnels:
-                        return tunnels[0]['public_url']
-                        
-            except Exception as e:
-                time.sleep(1)
-        
-        print("❌ Could not get ngrok URL")
-        return None
-            
-    except FileNotFoundError:
-        print("⚠️ ngrok not found")
-        return None
     except Exception as e:
-        print(f"⚠️ ngrok error: {e}")
-        return None
+        print(f"❌ Error processing user audio: {e}")
 
-def cleanup_temp_files():
-    """Periodic cleanup of temporary files"""
-    while True:
-        time.sleep(3600)
-        tts_engine.cleanup_temp_files()
-
-if __name__ == "__main__":
-    print("🚀 KLARIQO - AI Voice Agent")
-    print("=" * 40)
-    
-    # Validate configuration
+def start_websocket_server():
+    """Start WebSocket server for Exotel"""
     try:
-        Config.validate_config()
+        import asyncio
+        import websockets
+        
+        # Start WebSocket server
+        start_server = websockets.serve(
+            handle_exotel_websocket,
+            "0.0.0.0",
+            8765
+        )
+        
+        asyncio.get_event_loop().run_until_complete(start_server)
+        asyncio.get_event_loop().run_forever()
+    
+    except Exception as e:
+        print(f"❌ WebSocket server error: {e}")
+
+def main():
+    """Main function to start the application"""
+    try:
+        # Check configuration
+        if not os.getenv('OPENAI_API_KEY'):
+            print("❌ OPENAI_API_KEY not found in environment variables")
+            return
+        
         print("✅ Config OK")
-    except ValueError as e:
-        print(f"❌ Config error: {e}")
-        exit(1)
-    
-    # Start ngrok
-    public_url = start_ngrok()
-    current_ngrok_url = public_url
-    
-    if public_url:
-        print(f"🌐 Public URL: {public_url}")
-        print()
-        print("📞 EXOTEL SETUP:")
-        print(f"   Incoming Call URL: {public_url}/exotel/voice")
-        print(f"   Voicebot URL: {public_url}/exotel/get_websocket")
-        print()
+        
+        # Start ngrok for public access
+        print("🚀 Starting ngrok...")
+        try:
+            import subprocess
+            ngrok_process = subprocess.Popen(['ngrok', 'http', '5000'], 
+                                           stdout=subprocess.PIPE, 
+                                           stderr=subprocess.PIPE)
+            time.sleep(3)  # Wait for ngrok to start
+            
+            # Get ngrok URL (simplified - you might want to use ngrok API)
+            ngrok_url = "https://your-ngrok-url.ngrok-free.app"  # Replace with actual URL detection
+            print(f"🌐 Public URL: {ngrok_url}")
+            print(f"📞 EXOTEL SETUP:")
+            print(f"   Incoming Call URL: {ngrok_url}/exotel/voice")
+            print(f"   Voicebot URL: {ngrok_url}/exotel/get_websocket")
+        
+        except:
+            print("⚠️ Ngrok not available - using local URLs")
+            ngrok_url = "http://localhost:5000"
+        
         print("🔧 EXOTEL FLOW:")
         print("   Greeting → Voicebot")
         print("   ✅ YES, that's correct!")
-        print()
-    else:
-        print("⚠️ Running without ngrok")
+        print("✅ READY!")
+        print("=" * 40)
+        
+        # Start WebSocket server in a separate thread
+        websocket_thread = threading.Thread(target=start_websocket_server, daemon=True)
+        websocket_thread.start()
+        
+        # Start Flask app
+        app.run(host='0.0.0.0', port=5000, debug=False)
     
-    print("✅ READY!")
-    print("=" * 40)
-    
-    # Start background cleanup
-    cleanup_thread = threading.Thread(target=cleanup_temp_files)
-    cleanup_thread.daemon = True
-    cleanup_thread.start()
-    
-    # Run Flask app
-    app.run(
-        host=Config.FLASK_HOST,
-        port=Config.FLASK_PORT,
-        debug=Config.FLASK_DEBUG,
-        threaded=True
-    )
+    except KeyboardInterrupt:
+        print("\n🛑 Shutting down...")
+    except Exception as e:
+        print(f"❌ Error starting application: {e}")
+
+if __name__ == "__main__":
+    main()
