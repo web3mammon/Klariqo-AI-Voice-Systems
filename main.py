@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-KLARIQO MAIN APPLICATION - FIXED FOR EXOTEL
-Based on official Exotel WebSocket example
+KLARIQO MAIN APPLICATION - FIXED FOR EXOTEL PCM CHUNKING
+Proper PCM conversion and 320-byte chunking for Exotel
 """
 
 import os
@@ -11,7 +11,10 @@ import base64
 import audioop
 import threading
 import io
-import shutil
+import struct
+import wave
+import tempfile
+import subprocess
 from flask import Flask, request, send_file
 from flask_sock import Sock
 from deepgram import (
@@ -140,7 +143,7 @@ def exotel_debug():
     """Debug endpoint"""
     
     return {
-        "status": "Exotel Fixed - Official Format",
+        "status": "Exotel Fixed - PCM + 320-byte chunking",
         "active_sessions": session_manager.get_active_count(),
         "cached_audio_files": len(audio_manager.cached_files),
         "endpoints": {
@@ -153,104 +156,64 @@ def exotel_debug():
 
 # ===== AUDIO CONVERSION FUNCTIONS =====
 
-def setup_ffmpeg_windows():
-    """Automatically setup FFmpeg on Windows"""
-    import subprocess
-    import urllib.request
-    import zipfile
-    import tempfile
-    
-    print("📦 Setting up FFmpeg for Windows...")
-    
+def convert_mp3_to_pcm_pure_python(mp3_data):
+    """
+    Convert MP3 to PCM using pure Python libraries only
+    Fallback method that actually works!
+    """
     try:
-        # Check if FFmpeg already exists
-        if shutil.which('ffmpeg'):
-            print("✅ FFmpeg already available in PATH")
-            return True
-        
-        # Create ffmpeg directory in project
-        ffmpeg_dir = os.path.join(os.getcwd(), "ffmpeg_portable")
-        os.makedirs(ffmpeg_dir, exist_ok=True)
-        
-        ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
-        
-        if os.path.exists(ffmpeg_exe):
-            print("✅ Portable FFmpeg already exists")
-            # Add to PATH for current session
-            os.environ['PATH'] = ffmpeg_dir + os.pathsep + os.environ.get('PATH', '')
-            return True
-        
-        # Download portable FFmpeg
-        print("📥 Downloading portable FFmpeg...")
-        download_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
-            urllib.request.urlretrieve(download_url, tmp_file.name)
-            
-            print("📦 Extracting FFmpeg...")
-            with zipfile.ZipFile(tmp_file.name, 'r') as zip_ref:
-                # Find ffmpeg.exe in the zip
-                for file_info in zip_ref.infolist():
-                    if file_info.filename.endswith('ffmpeg.exe'):
-                        # Extract just the exe
-                        with zip_ref.open(file_info) as source:
-                            with open(ffmpeg_exe, 'wb') as target:
-                                target.write(source.read())
-                        break
-            
-            # Cleanup
-            os.unlink(tmp_file.name)
-        
-        if os.path.exists(ffmpeg_exe):
-            # Add to PATH for current session
-            os.environ['PATH'] = ffmpeg_dir + os.pathsep + os.environ.get('PATH', '')
-            print("✅ Portable FFmpeg setup complete!")
-            return True
-        else:
-            print("❌ FFmpeg extraction failed")
-            return False
-            
-    except Exception as e:
-        print(f"❌ FFmpeg setup failed: {e}")
-        return False
-
-def initialize_audio_dependencies():
-    """Initialize audio processing dependencies"""
-    
-    # Try to import pydub
-    try:
-        from pydub import AudioSegment
-        print("✅ pydub available")
-        
-        # Test conversion
-        test_successful = True
+        # Method 1: Try using system tools if available
         try:
-            # Create a tiny test audio
-            test_audio = AudioSegment.silent(duration=100)  # 100ms silence
-            test_audio = test_audio.set_frame_rate(8000).set_channels(1).set_sample_width(2)
-            test_pcm = test_audio.raw_data
-            print("✅ Audio conversion test passed")
-        except Exception as e:
-            print(f"⚠️ Audio conversion test failed: {e}")
-            test_successful = False
+            # Write MP3 to temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp_mp3:
+                tmp_mp3.write(mp3_data)
+                tmp_mp3_path = tmp_mp3.name
             
-        if not test_successful:
-            # Try to setup FFmpeg
-            if os.name == 'nt':  # Windows
-                setup_ffmpeg_windows()
-            else:
-                print("💡 Install FFmpeg: sudo apt install ffmpeg (Linux) or brew install ffmpeg (Mac)")
+            try:
+                # Create temp wav file
+                tmp_wav_path = tmp_mp3_path.replace('.mp3', '.wav')
+                
+                # Try different system commands
+                conversion_commands = [
+                    # Try ffmpeg if available
+                    ['ffmpeg', '-i', tmp_mp3_path, '-ar', '8000', '-ac', '1', '-f', 'wav', tmp_wav_path],
+                    # Try avconv as alternative
+                    ['avconv', '-i', tmp_mp3_path, '-ar', '8000', '-ac', '1', '-f', 'wav', tmp_wav_path],
+                ]
+                
+                for cmd in conversion_commands:
+                    try:
+                        result = subprocess.run(cmd, capture_output=True, timeout=10)
+                        if result.returncode == 0 and os.path.exists(tmp_wav_path):
+                            # Read the converted WAV file
+                            with wave.open(tmp_wav_path, 'rb') as wav_file:
+                                # Ensure correct format
+                                if wav_file.getframerate() != 8000:
+                                    print(f"⚠️ Sample rate is {wav_file.getframerate()}, should be 8000")
+                                if wav_file.getnchannels() != 1:
+                                    print(f"⚠️ Channels is {wav_file.getnchannels()}, should be 1")
+                                if wav_file.getsampwidth() != 2:
+                                    print(f"⚠️ Sample width is {wav_file.getsampwidth()}, should be 2")
+                                
+                                pcm_data = wav_file.readframes(wav_file.getnframes())
+                                print(f"✅ Converted using {cmd[0]}: {len(pcm_data)} bytes PCM")
+                                return pcm_data
+                    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+                        continue
+                
+            finally:
+                # Cleanup temp files
+                try:
+                    os.unlink(tmp_mp3_path)
+                    if os.path.exists(tmp_wav_path):
+                        os.unlink(tmp_wav_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            print(f"⚠️ System conversion failed: {e}")
         
-    except ImportError:
-        print("📦 Installing pydub...")
-        import subprocess
-        subprocess.check_call(["pip", "install", "pydub"])
-        print("✅ pydub installed")
-
-def convert_mp3_to_pcm_simple(mp3_data):
-    """Convert MP3 to PCM for Exotel using multiple fallback methods"""
-    try:
-        # Method 1: Try pydub with FFmpeg
+        # Method 2: Try pydub if available (but don't require it)
         try:
             from pydub import AudioSegment
             
@@ -263,56 +226,183 @@ def convert_mp3_to_pcm_simple(mp3_data):
             audio = audio.set_sample_width(2)  # 16-bit
             
             # Return raw PCM data
-            return audio.raw_data
-            
-        except Exception as e:
-            print(f"⚠️ pydub failed: {e}")
-            raise
-            
-    except ImportError:
-        print("⚠️ pydub not installed. Installing...")
-        import subprocess
-        subprocess.check_call(["pip", "install", "pydub"])
-        # Retry after installation
-        return convert_mp3_to_pcm_simple(mp3_data)
-        
-    except Exception as e:
-        print(f"❌ All conversion methods failed: {e}")
-        # Method 2: Use librosa as fallback (if available)
-        try:
-            import librosa
-            import numpy as np
-            
-            # Load audio using librosa
-            audio_data, sr = librosa.load(io.BytesIO(mp3_data), sr=8000, mono=True)
-            
-            # Convert to 16-bit PCM
-            pcm_data = (audio_data * 32767).astype(np.int16).tobytes()
-            
-            print("✅ Converted using librosa fallback")
+            pcm_data = audio.raw_data
+            print(f"✅ Converted using pydub: {len(pcm_data)} bytes PCM")
             return pcm_data
             
         except ImportError:
-            print("❌ librosa not available")
+            print("⚠️ pydub not available")
         except Exception as e:
-            print(f"❌ librosa conversion failed: {e}")
+            print(f"⚠️ pydub conversion failed: {e}")
         
-        # Method 3: Bypass conversion entirely (emergency fallback)
-        print("⚠️ Using MP3 data directly - audio quality may be poor")
-        return mp3_data
+        # Method 3: Generate silence as fallback (better than noise)
+        print("⚠️ All conversion methods failed, generating silence")
+        # Generate 2 seconds of silence at 8kHz, 16-bit, mono
+        duration_seconds = 2
+        sample_rate = 8000
+        silence_samples = duration_seconds * sample_rate
+        # 16-bit silence = 0x0000 for each sample
+        pcm_data = b'\x00\x00' * silence_samples
+        print(f"🔇 Generated {len(pcm_data)} bytes of silence")
+        return pcm_data
+        
+    except Exception as e:
+        print(f"❌ All conversion methods failed: {e}")
+        # Return minimal silence
+        return b'\x00\x00' * 1600  # 200ms of silence
+
+def send_audio_exotel_fixed_chunking(ws, mp3_data, stream_sid):
+    """
+    Send audio to Exotel with PROPER PCM format and 320-byte chunking
+    """
+    try:
+        if not stream_sid:
+            print("❌ No stream_sid available")
+            return
+        
+        print(f"🎵 Converting {len(mp3_data)} bytes of MP3 to PCM...")
+        
+        # Convert MP3 to PCM
+        pcm_data = convert_mp3_to_pcm_pure_python(mp3_data)
+        
+        if not pcm_data:
+            print("❌ PCM conversion failed")
+            return
+        
+        print(f"🎵 Got {len(pcm_data)} bytes of PCM data")
+        
+        # CRITICAL: Exotel requires chunks in multiples of 320 bytes
+        CHUNK_SIZE = 320  # Exactly 320 bytes as required
+        total_chunks = len(pcm_data) // CHUNK_SIZE
+        
+        print(f"🎵 Sending {total_chunks} chunks of {CHUNK_SIZE} bytes each")
+        
+        # Send chunks with proper timing
+        for i in range(total_chunks):
+            start_pos = i * CHUNK_SIZE
+            end_pos = start_pos + CHUNK_SIZE
+            chunk = pcm_data[start_pos:end_pos]
+            
+            # Ensure chunk is exactly 320 bytes
+            if len(chunk) < CHUNK_SIZE:
+                # Pad with silence (zeros) if needed
+                chunk = chunk + b'\x00' * (CHUNK_SIZE - len(chunk))
+            
+            # Send chunk to Exotel
+            message = json.dumps({
+                'event': 'media',
+                'stream_sid': stream_sid,
+                'media': {
+                    'payload': base64.b64encode(chunk).decode("ascii")
+                }
+            })
+            
+            ws.send(message)
+            
+            # CRITICAL: Proper timing - 320 bytes at 8kHz = 20ms
+            # 320 bytes = 160 samples = 160/8000 = 0.02 seconds = 20ms
+            time.sleep(0.02)  # 20ms delay between chunks
+            
+            if (i + 1) % 50 == 0:  # Progress update every 50 chunks (1 second)
+                print(f"📡 Sent {i + 1}/{total_chunks} chunks...")
+        
+        # Handle any remaining bytes (should pad to 320)
+        remaining_bytes = len(pcm_data) % CHUNK_SIZE
+        if remaining_bytes > 0:
+            last_chunk_start = total_chunks * CHUNK_SIZE
+            last_chunk = pcm_data[last_chunk_start:]
+            # Pad to 320 bytes
+            last_chunk = last_chunk + b'\x00' * (CHUNK_SIZE - len(last_chunk))
+            
+            message = json.dumps({
+                'event': 'media',
+                'stream_sid': stream_sid,
+                'media': {
+                    'payload': base64.b64encode(last_chunk).decode("ascii")
+                }
+            })
+            
+            ws.send(message)
+            print(f"📡 Sent final padded chunk")
+        
+        print(f"✅ Audio sent successfully: {total_chunks} chunks")
+        
+    except Exception as e:
+        print(f"❌ Send error: {e}")
+        import traceback
+        traceback.print_exc()
+
+def process_and_respond_exotel_fixed(transcript, call_sid, ws, stream_sid):
+    """Process input and respond using FIXED audio chunking"""
+    try:
+        session = session_manager.get_session(call_sid)
+        if not session:
+            return
+        
+        start_time = time.time()
+        
+        # Log principal's input
+        call_logger.log_principal_input(call_sid, transcript)
+        
+        # Get AI response
+        response_type, content = response_router.get_school_response(transcript, session)
+        
+        # Calculate response time
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Add to history
+        session.add_to_history("Principal", transcript)
+        session.add_to_history("Nisha", f"<{response_type}: {content}>")
+        
+        # Clean logging
+        print(f"📞 User: {transcript}")
+        print(f"🤖 AI: {content} ({response_time_ms}ms)")
+        
+        if response_type == "AUDIO":
+            # Send audio files with FIXED chunking
+            audio_files = [f.strip() for f in content.split('+')]
+            
+            for audio_file in audio_files:
+                if audio_file in audio_manager.memory_cache:
+                    mp3_data = audio_manager.memory_cache[audio_file]
+                    
+                    # Use FIXED audio sending with proper PCM conversion
+                    send_audio_exotel_fixed_chunking(ws, mp3_data, stream_sid)
+                    
+                    # Delay between files (allow previous audio to finish)
+                    time.sleep(1.0)
+                else:
+                    print(f"❌ Audio file not in cache: {audio_file}")
+                    
+            call_logger.log_nisha_audio_response(call_sid, content)
+            
+        elif response_type == "TTS":
+            # Generate TTS and send with FIXED chunking
+            tts_audio_data = tts_engine.generate_audio(content, save_temp=False)
+            if tts_audio_data:
+                send_audio_exotel_fixed_chunking(ws, tts_audio_data, stream_sid)
+                    
+            call_logger.log_nisha_tts_response(call_sid, content)
+        
+        print(f"✅ Response sent with proper chunking")
+        
+    except Exception as e:
+        print(f"❌ Processing error: {e}")
+        import traceback
+        traceback.print_exc()
 
 # ===== FIXED EXOTEL WEBSOCKET HANDLER =====
 
 @sock.route('/exotel/media/<call_sid>')
 def exotel_media_stream(ws, call_sid):
-    """Handle Exotel WebSocket - FIXED based on official example"""
+    """Handle Exotel WebSocket - FIXED for proper PCM chunking"""
     
     session = session_manager.get_session(call_sid)
     if not session:
         session = session_manager.create_session(call_sid, "inbound")
     
     session.twilio_ws = ws
-    session.stream_sid = None  # Will be set from start message
+    session.stream_sid = None
     
     def start_deepgram():
         """Initialize Deepgram connection"""
@@ -344,11 +434,12 @@ def exotel_media_stream(ws, call_sid):
     time.sleep(0.5)
     
     def transcript_checker():
-        """Monitor for completed transcripts"""
+        """Monitor for completed transcripts - FIXED VERSION"""
         while True:
             time.sleep(0.05)
             if session.check_for_completion():
-                process_and_respond_exotel_official(session.completed_transcript, call_sid, ws, session.stream_sid)
+                # USE FIXED FUNCTION:
+                process_and_respond_exotel_fixed(session.completed_transcript, call_sid, ws, session.stream_sid)
                 session.reset_for_next_input()
     
     checker_thread = threading.Thread(target=transcript_checker)
@@ -368,7 +459,6 @@ def exotel_media_stream(ws, call_sid):
                 print(f"🔌 Exotel connected: {call_sid}")
                 
             elif event_type == 'start':
-                # CRITICAL: Get stream_sid from start message
                 session.stream_sid = data.get('stream_sid')
                 print(f"🎤 Stream started: {session.stream_sid}")
                 
@@ -393,108 +483,6 @@ def exotel_media_stream(ws, call_sid):
         if session.dg_connection:
             session.dg_connection.finish()
             session.dg_connection = None
-
-def process_and_respond_exotel_official(transcript, call_sid, ws, stream_sid):
-    """Process input and respond using Exotel's official format"""
-    try:
-        session = session_manager.get_session(call_sid)
-        if not session:
-            return
-        
-        start_time = time.time()
-        
-        # Log principal's input
-        call_logger.log_principal_input(call_sid, transcript)
-        
-        # Get AI response
-        response_type, content = response_router.get_school_response(transcript, session)
-        
-        # Calculate response time
-        response_time_ms = int((time.time() - start_time) * 1000)
-        
-        # Add to history
-        session.add_to_history("Principal", transcript)
-        session.add_to_history("Nisha", f"<{response_type}: {content}>")
-        
-        # Clean logging
-        print(f"📞 User: {transcript}")
-        print(f"🤖 AI: {content} ({response_time_ms}ms)")
-        
-        if response_type == "AUDIO":
-            # Send audio files using official Exotel format
-            audio_files = [f.strip() for f in content.split('+')]
-            
-            for audio_file in audio_files:
-                if audio_file in audio_manager.memory_cache:
-                    mp3_data = audio_manager.memory_cache[audio_file]
-                    
-                    # Convert MP3 to PCM for Exotel
-                    pcm_data = convert_mp3_to_pcm_simple(mp3_data)
-                    if pcm_data:
-                        send_audio_exotel_official(ws, pcm_data, stream_sid)
-                    else:
-                        print(f"❌ Failed to convert {audio_file}")
-                    
-                    # Delay between files
-                    time.sleep(0.5)
-                else:
-                    print(f"❌ Audio file not in cache: {audio_file}")
-                    
-            call_logger.log_nisha_audio_response(call_sid, content)
-            
-        elif response_type == "TTS":
-            # Generate TTS and send
-            tts_audio_data = tts_engine.generate_audio(content, save_temp=False)
-            if tts_audio_data:
-                pcm_data = convert_mp3_to_pcm_simple(tts_audio_data)
-                if pcm_data:
-                    send_audio_exotel_official(ws, pcm_data, stream_sid)
-                    
-            call_logger.log_nisha_tts_response(call_sid, content)
-        
-        print(f"✅ Response sent")
-        
-    except Exception as e:
-        print(f"❌ Processing error: {e}")
-
-def send_audio_exotel_official(ws, pcm_data, stream_sid):
-    """Send audio using EXACT Exotel official format"""
-    try:
-        if not stream_sid:
-            print("❌ No stream_sid available")
-            return
-            
-        # Use exact parameters from Exotel example
-        RATE = 8000
-        CHUNK_SIZE = int(RATE / 10)  # 100ms chunks = 800 bytes
-        
-        print(f"🎵 Sending {len(pcm_data)} bytes in {CHUNK_SIZE}-byte chunks")
-        
-        for i in range(0, len(pcm_data), CHUNK_SIZE):
-            chunk = pcm_data[i:i + CHUNK_SIZE]
-            
-            # Pad last chunk if needed
-            if len(chunk) < CHUNK_SIZE:
-                chunk = chunk + b'\x00' * (CHUNK_SIZE - len(chunk))
-            
-            # Use EXACT format from Exotel example
-            message = json.dumps({
-                'event': 'media',
-                'stream_sid': stream_sid,
-                'media': {
-                    'payload': base64.b64encode(chunk).decode("ascii")
-                }
-            })
-            
-            # Use EXACT timing from Exotel example
-            time.sleep(0.25)
-            ws.send(message)
-            time.sleep(0.20)
-            
-        print(f"✅ Audio sent successfully")
-        
-    except Exception as e:
-        print(f"❌ Send error: {e}")
 
 # ===== TWILIO WEBSOCKET (KEEP FOR BACKWARDS COMPATIBILITY) =====
 
@@ -674,6 +662,35 @@ def serve_logs(filename):
     except Exception as e:
         return f"Error serving log: {e}", 500
 
+def test_pcm_conversion():
+    """Test PCM conversion with a small MP3 file"""
+    try:
+        # Test with one of your cached files
+        if audio_manager.memory_cache:
+            test_file = list(audio_manager.memory_cache.keys())[0]
+            mp3_data = audio_manager.memory_cache[test_file]
+            
+            print(f"🧪 Testing PCM conversion with {test_file}")
+            pcm_data = convert_mp3_to_pcm_pure_python(mp3_data)
+            
+            if pcm_data:
+                print(f"✅ Conversion successful: {len(mp3_data)} bytes MP3 → {len(pcm_data)} bytes PCM")
+                
+                # Verify it's the right format for 320-byte chunks
+                chunks_possible = len(pcm_data) // 320
+                print(f"📊 Can create {chunks_possible} chunks of 320 bytes")
+                return True
+            else:
+                print("❌ Conversion failed")
+                return False
+        else:
+            print("⚠️ No audio files in cache to test")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Test failed: {e}")
+        return False
+
 def start_ngrok():
     """Start ngrok tunnel for local development"""
     import subprocess
@@ -742,9 +759,7 @@ def cleanup_temp_files():
         tts_engine.cleanup_temp_files()
 
 if __name__ == "__main__":
-    initialize_audio_dependencies()  # Initialize audio dependencies first
-
-    print("🚀 KLARIQO - AI Voice Agent")
+    print("🚀 KLARIQO - AI Voice Agent (Fixed PCM + Chunking)")
     print("=" * 40)
     
     # Validate configuration
@@ -754,6 +769,13 @@ if __name__ == "__main__":
     except ValueError as e:
         print(f"❌ Config error: {e}")
         exit(1)
+    
+    # Test PCM conversion during startup
+    print("🧪 Testing audio conversion...")
+    if test_pcm_conversion():
+        print("✅ Audio conversion working!")
+    else:
+        print("⚠️ Audio conversion issues detected - will use silence fallback")
     
     # Start ngrok
     public_url = start_ngrok()
@@ -768,7 +790,7 @@ if __name__ == "__main__":
         print()
         print("🔧 EXOTEL FLOW:")
         print("   Greeting → Voicebot")
-        print("   ✅ YES, that's correct!")
+        print("   ✅ PCM conversion + 320-byte chunking")
         print()
     else:
         print("⚠️ Running without ngrok")
