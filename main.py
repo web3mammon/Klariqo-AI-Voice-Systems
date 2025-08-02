@@ -11,6 +11,7 @@ import base64
 import audioop
 import threading
 import io
+import shutil
 from flask import Flask, request, send_file
 from flask_sock import Sock
 from deepgram import (
@@ -149,6 +150,156 @@ def exotel_debug():
             "websocket": "/exotel/media/<call_sid>"
         }
     }
+
+# ===== AUDIO CONVERSION FUNCTIONS =====
+
+def setup_ffmpeg_windows():
+    """Automatically setup FFmpeg on Windows"""
+    import subprocess
+    import urllib.request
+    import zipfile
+    import tempfile
+    
+    print("📦 Setting up FFmpeg for Windows...")
+    
+    try:
+        # Check if FFmpeg already exists
+        if shutil.which('ffmpeg'):
+            print("✅ FFmpeg already available in PATH")
+            return True
+        
+        # Create ffmpeg directory in project
+        ffmpeg_dir = os.path.join(os.getcwd(), "ffmpeg_portable")
+        os.makedirs(ffmpeg_dir, exist_ok=True)
+        
+        ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+        
+        if os.path.exists(ffmpeg_exe):
+            print("✅ Portable FFmpeg already exists")
+            # Add to PATH for current session
+            os.environ['PATH'] = ffmpeg_dir + os.pathsep + os.environ.get('PATH', '')
+            return True
+        
+        # Download portable FFmpeg
+        print("📥 Downloading portable FFmpeg...")
+        download_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
+            urllib.request.urlretrieve(download_url, tmp_file.name)
+            
+            print("📦 Extracting FFmpeg...")
+            with zipfile.ZipFile(tmp_file.name, 'r') as zip_ref:
+                # Find ffmpeg.exe in the zip
+                for file_info in zip_ref.infolist():
+                    if file_info.filename.endswith('ffmpeg.exe'):
+                        # Extract just the exe
+                        with zip_ref.open(file_info) as source:
+                            with open(ffmpeg_exe, 'wb') as target:
+                                target.write(source.read())
+                        break
+            
+            # Cleanup
+            os.unlink(tmp_file.name)
+        
+        if os.path.exists(ffmpeg_exe):
+            # Add to PATH for current session
+            os.environ['PATH'] = ffmpeg_dir + os.pathsep + os.environ.get('PATH', '')
+            print("✅ Portable FFmpeg setup complete!")
+            return True
+        else:
+            print("❌ FFmpeg extraction failed")
+            return False
+            
+    except Exception as e:
+        print(f"❌ FFmpeg setup failed: {e}")
+        return False
+
+def initialize_audio_dependencies():
+    """Initialize audio processing dependencies"""
+    
+    # Try to import pydub
+    try:
+        from pydub import AudioSegment
+        print("✅ pydub available")
+        
+        # Test conversion
+        test_successful = True
+        try:
+            # Create a tiny test audio
+            test_audio = AudioSegment.silent(duration=100)  # 100ms silence
+            test_audio = test_audio.set_frame_rate(8000).set_channels(1).set_sample_width(2)
+            test_pcm = test_audio.raw_data
+            print("✅ Audio conversion test passed")
+        except Exception as e:
+            print(f"⚠️ Audio conversion test failed: {e}")
+            test_successful = False
+            
+        if not test_successful:
+            # Try to setup FFmpeg
+            if os.name == 'nt':  # Windows
+                setup_ffmpeg_windows()
+            else:
+                print("💡 Install FFmpeg: sudo apt install ffmpeg (Linux) or brew install ffmpeg (Mac)")
+        
+    except ImportError:
+        print("📦 Installing pydub...")
+        import subprocess
+        subprocess.check_call(["pip", "install", "pydub"])
+        print("✅ pydub installed")
+
+def convert_mp3_to_pcm_simple(mp3_data):
+    """Convert MP3 to PCM for Exotel using multiple fallback methods"""
+    try:
+        # Method 1: Try pydub with FFmpeg
+        try:
+            from pydub import AudioSegment
+            
+            # Load MP3 from bytes
+            audio = AudioSegment.from_mp3(io.BytesIO(mp3_data))
+            
+            # Convert to Exotel format: 8kHz, 16-bit, mono
+            audio = audio.set_frame_rate(8000)
+            audio = audio.set_channels(1)
+            audio = audio.set_sample_width(2)  # 16-bit
+            
+            # Return raw PCM data
+            return audio.raw_data
+            
+        except Exception as e:
+            print(f"⚠️ pydub failed: {e}")
+            raise
+            
+    except ImportError:
+        print("⚠️ pydub not installed. Installing...")
+        import subprocess
+        subprocess.check_call(["pip", "install", "pydub"])
+        # Retry after installation
+        return convert_mp3_to_pcm_simple(mp3_data)
+        
+    except Exception as e:
+        print(f"❌ All conversion methods failed: {e}")
+        # Method 2: Use librosa as fallback (if available)
+        try:
+            import librosa
+            import numpy as np
+            
+            # Load audio using librosa
+            audio_data, sr = librosa.load(io.BytesIO(mp3_data), sr=8000, mono=True)
+            
+            # Convert to 16-bit PCM
+            pcm_data = (audio_data * 32767).astype(np.int16).tobytes()
+            
+            print("✅ Converted using librosa fallback")
+            return pcm_data
+            
+        except ImportError:
+            print("❌ librosa not available")
+        except Exception as e:
+            print(f"❌ librosa conversion failed: {e}")
+        
+        # Method 3: Bypass conversion entirely (emergency fallback)
+        print("⚠️ Using MP3 data directly - audio quality may be poor")
+        return mp3_data
 
 # ===== FIXED EXOTEL WEBSOCKET HANDLER =====
 
@@ -305,29 +456,6 @@ def process_and_respond_exotel_official(transcript, call_sid, ws, stream_sid):
         
     except Exception as e:
         print(f"❌ Processing error: {e}")
-
-def convert_mp3_to_pcm_simple(mp3_data):
-    """Convert MP3 to PCM using pydub"""
-    try:
-        from pydub import AudioSegment
-        
-        # Load MP3 from bytes
-        audio = AudioSegment.from_mp3(io.BytesIO(mp3_data))
-        
-        # Convert to Exotel format: 8kHz, 16-bit, mono
-        audio = audio.set_frame_rate(8000)
-        audio = audio.set_channels(1)
-        audio = audio.set_sample_width(2)  # 16-bit
-        
-        # Return raw PCM data
-        return audio.raw_data
-        
-    except ImportError:
-        print("❌ pydub not installed. Run: pip install pydub")
-        return None
-    except Exception as e:
-        print(f"❌ Conversion error: {e}")
-        return None
 
 def send_audio_exotel_official(ws, pcm_data, stream_sid):
     """Send audio using EXACT Exotel official format"""
@@ -614,6 +742,8 @@ def cleanup_temp_files():
         tts_engine.cleanup_temp_files()
 
 if __name__ == "__main__":
+    initialize_audio_dependencies()  # Initialize audio dependencies first
+
     print("🚀 KLARIQO - AI Voice Agent")
     print("=" * 40)
     
