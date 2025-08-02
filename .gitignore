@@ -1,0 +1,97 @@
+# Environment variables and sensitive data
+.env
+.env.local
+.env.production
+.env.staging
+.env.development
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.db
+*.sqlite3
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Audio files (large files that shouldn't be in repo)
+*.wav
+*.mp3
+*.m4a
+*.aac
+test.mp3
+
+# Generated/cache files
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# API keys and credentials backup files
+*.backup
+*.bak
+config.bak
+keys.txt
+credentials.txt
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# ngrok
+ngrok.exe
+ngrok
+
+# Local development
+local_config.py
+debug.py
+test_local.py
