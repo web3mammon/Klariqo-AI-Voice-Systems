@@ -14,6 +14,8 @@ import threading
 import requests
 from openai import OpenAI
 import time
+import zipfile
+import urllib.request
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,62 +27,126 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-class ExotelAudioConverter:
+class PortableFFmpegManager:
     """
-    Audio converter for Exotel Voicebot requirements:
-    - 16-bit, 8kHz, mono PCM (little-endian)
-    - Base64 encoded
+    Downloads and manages a portable FFmpeg installation
+    No PATH modification needed!
     """
     
     def __init__(self):
-        self.ffmpeg_path = self._find_ffmpeg()
-        if not self.ffmpeg_path:
-            print("❌ FFmpeg not found!")
-            self._show_install_instructions()
-            raise RuntimeError("FFmpeg not found. Please install FFmpeg and add to PATH")
-        print("✅ FFmpeg found and ready")
+        self.project_dir = os.getcwd()
+        self.ffmpeg_dir = os.path.join(self.project_dir, "portable_ffmpeg")
+        self.ffmpeg_exe = os.path.join(self.ffmpeg_dir, "ffmpeg.exe")
+        
+        # Try to get FFmpeg ready
+        if not self._is_ffmpeg_ready():
+            print("📦 Setting up portable FFmpeg...")
+            self._setup_portable_ffmpeg()
     
-    def _find_ffmpeg(self):
-        """Find FFmpeg executable on the system"""
-        # Check if ffmpeg is in PATH
-        if shutil.which('ffmpeg'):
-            return 'ffmpeg'
-        
-        # Common Windows locations
-        common_paths = [
-            r'C:\ffmpeg\bin\ffmpeg.exe',
-            r'C:\Program Files\ffmpeg\bin\ffmpeg.exe',
-            r'C:\Program Files (x86)\ffmpeg\bin\ffmpeg.exe',
-            os.path.join(os.getcwd(), 'ffmpeg.exe'),
-            os.path.join(os.getcwd(), 'ffmpeg', 'bin', 'ffmpeg.exe')
-        ]
-        
-        for path in common_paths:
-            if os.path.exists(path):
-                return path
-        
-        return None
+    def _is_ffmpeg_ready(self):
+        """Check if portable FFmpeg is ready to use"""
+        if os.path.exists(self.ffmpeg_exe):
+            try:
+                # Test if it actually works
+                result = subprocess.run([self.ffmpeg_exe, "-version"], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    print("✅ Portable FFmpeg ready!")
+                    return True
+            except:
+                pass
+        return False
     
-    def _show_install_instructions(self):
-        """Show FFmpeg installation instructions"""
-        print("""
-🔧 QUICK FIX: Install FFmpeg on Windows
+    def _setup_portable_ffmpeg(self):
+        """Download and setup portable FFmpeg"""
+        try:
+            # Create directory
+            os.makedirs(self.ffmpeg_dir, exist_ok=True)
+            
+            # Download URL for Windows 64-bit FFmpeg
+            download_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+            zip_path = os.path.join(self.ffmpeg_dir, "ffmpeg.zip")
+            
+            print("📥 Downloading FFmpeg (this may take a minute)...")
+            self._download_with_progress(download_url, zip_path)
+            
+            print("📦 Extracting FFmpeg...")
+            self._extract_ffmpeg(zip_path)
+            
+            # Cleanup
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+            
+            if self._is_ffmpeg_ready():
+                print("✅ Portable FFmpeg setup complete!")
+            else:
+                raise Exception("FFmpeg setup verification failed")
+        
+        except Exception as e:
+            print(f"❌ Failed to setup portable FFmpeg: {e}")
+            print("🔧 Manual backup method:")
+            print("1. Go to: https://github.com/BtbN/FFmpeg-Builds/releases")
+            print("2. Download: ffmpeg-master-latest-win64-gpl.zip")
+            print(f"3. Extract to: {self.ffmpeg_dir}")
+            print("4. Make sure ffmpeg.exe is directly in the folder")
+            raise
+    
+    def _download_with_progress(self, url, filepath):
+        """Download file with progress indication"""
+        try:
+            def progress_hook(block_num, block_size, total_size):
+                downloaded = block_num * block_size
+                if total_size > 0:
+                    percent = min(100, (downloaded * 100) // total_size)
+                    if percent % 10 == 0:  # Show every 10%
+                        print(f"📥 Downloaded: {percent}%")
+            
+            urllib.request.urlretrieve(url, filepath, progress_hook)
+        except Exception as e:
+            print(f"❌ Download failed: {e}")
+            raise
+    
+    def _extract_ffmpeg(self, zip_path):
+        """Extract FFmpeg from downloaded zip"""
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # Find ffmpeg.exe in the zip
+                ffmpeg_found = False
+                for file_info in zip_ref.infolist():
+                    if file_info.filename.endswith('ffmpeg.exe'):
+                        # Extract just the exe file
+                        file_info.filename = 'ffmpeg.exe'  # Rename to simple name
+                        zip_ref.extract(file_info, self.ffmpeg_dir)
+                        ffmpeg_found = True
+                        break
+                
+                if not ffmpeg_found:
+                    raise Exception("ffmpeg.exe not found in downloaded archive")
+        
+        except Exception as e:
+            print(f"❌ Extraction failed: {e}")
+            raise
+    
+    def get_ffmpeg_path(self):
+        """Get the path to the portable FFmpeg executable"""
+        if self._is_ffmpeg_ready():
+            return self.ffmpeg_exe
+        else:
+            raise RuntimeError("Portable FFmpeg not available")
 
-Method 1 - Using winget (Recommended):
-   winget install ffmpeg
-
-Method 2 - Manual Installation:
-   1. Download: https://github.com/BtbN/FFmpeg-Builds/releases
-   2. Get: ffmpeg-master-latest-win64-gpl.zip
-   3. Extract to: C:\\ffmpeg\\
-   4. Add to PATH: C:\\ffmpeg\\bin
-   5. Restart terminal and run: ffmpeg -version
-
-Method 3 - Using Chocolatey:
-   choco install ffmpeg
-
-After installation, restart your terminal!
-        """)
+class ExotelAudioConverter:
+    """
+    Audio converter using portable FFmpeg - NO INSTALLATION REQUIRED!
+    """
+    
+    def __init__(self):
+        try:
+            self.ffmpeg_manager = PortableFFmpegManager()
+            self.ffmpeg_path = self.ffmpeg_manager.get_ffmpeg_path()
+            print("✅ Audio converter ready with portable FFmpeg")
+        except Exception as e:
+            print(f"❌ Audio converter failed: {e}")
+            raise
     
     def convert_to_exotel_format(self, input_file_path):
         """
@@ -118,7 +184,8 @@ After installation, restart your terminal!
             return output_file_path
             
         except subprocess.CalledProcessError as e:
-            print(f"❌ FFmpeg conversion failed for {input_file_path}: {e.stderr}")
+            print(f"❌ FFmpeg conversion failed for {input_file_path}")
+            print(f"   Error: {e.stderr}")
             return None
         except subprocess.TimeoutExpired:
             print(f"❌ FFmpeg conversion timed out for {input_file_path}")
@@ -150,19 +217,108 @@ After installation, restart your terminal!
             print(f"❌ Base64 conversion failed for {wav_file_path}: {str(e)}")
             return None
 
+# Fallback: Pure Python audio conversion (if even portable FFmpeg fails)
+class FallbackAudioConverter:
+    """
+    Emergency fallback using pure Python libraries
+    Much lower quality but works without any external dependencies
+    """
+    
+    def __init__(self):
+        try:
+            import wave
+            import struct
+            print("⚠️ Using fallback audio converter (lower quality)")
+        except ImportError:
+            raise RuntimeError("No audio conversion method available")
+    
+    def convert_to_exotel_format(self, input_file_path):
+        """
+        Basic conversion - only works with WAV files
+        """
+        if not input_file_path.lower().endswith('.wav'):
+            print(f"❌ Fallback converter only supports WAV files: {input_file_path}")
+            return None
+        
+        try:
+            import wave
+            import struct
+            
+            output_file_path = tempfile.mktemp(suffix='_exotel_fallback.wav')
+            
+            # Read input WAV
+            with wave.open(input_file_path, 'rb') as wav_in:
+                frames = wav_in.readframes(wav_in.getnframes())
+                sample_rate = wav_in.getframerate()
+                channels = wav_in.getnchannels()
+                sample_width = wav_in.getsampwidth()
+            
+            # Convert to 16-bit mono if needed (very basic)
+            if sample_width != 2:  # Not 16-bit
+                print(f"⚠️ Converting from {sample_width*8}-bit to 16-bit (basic conversion)")
+            
+            # Write output WAV at 8kHz mono 16-bit
+            with wave.open(output_file_path, 'wb') as wav_out:
+                wav_out.setnchannels(1)  # Mono
+                wav_out.setsampwidth(2)  # 16-bit
+                wav_out.setframerate(8000)  # 8kHz
+                
+                # Basic downsampling (very crude)
+                if sample_rate != 8000:
+                    step = sample_rate // 8000
+                    frames = frames[::step * channels * sample_width]
+                
+                wav_out.writeframes(frames[:len(frames)//2])  # Crude mono conversion
+            
+            print(f"⚠️ Basic conversion completed: {os.path.basename(input_file_path)}")
+            return output_file_path
+        
+        except Exception as e:
+            print(f"❌ Fallback conversion failed: {e}")
+            return None
+    
+    def convert_to_base64(self, wav_file_path):
+        """Same base64 conversion as main converter"""
+        try:
+            with open(wav_file_path, 'rb') as f:
+                wav_data = f.read()
+            
+            if len(wav_data) > 44:
+                pcm_data = wav_data[44:]
+                base64_data = base64.b64encode(pcm_data).decode('utf-8')
+                return base64_data
+            
+            return None
+        except Exception as e:
+            print(f"❌ Fallback base64 conversion failed: {e}")
+            return None
+
+# Smart audio converter initialization
+def initialize_audio_converter():
+    """Initialize the best available audio converter"""
+    try:
+        # Try portable FFmpeg first
+        return ExotelAudioConverter()
+    except Exception as e:
+        print(f"⚠️ Portable FFmpeg failed: {e}")
+        try:
+            # Fall back to basic Python converter
+            return FallbackAudioConverter()
+        except Exception as e2:
+            print(f"❌ All audio conversion methods failed: {e2}")
+            return None
+
 # Initialize audio converter
-try:
-    audio_converter = ExotelAudioConverter()
-except RuntimeError:
-    print("⚠️ Running without audio conversion - FFmpeg not available")
-    audio_converter = None
+audio_converter = initialize_audio_converter()
 
 class ResponseRouter:
     """Handles response selection and audio conversion"""
     
     def __init__(self):
         self.audio_cache = self._load_audio_cache()
-        print(f"🎵 Audio cache: {len(self.audio_cache)} files loaded")
+        if self.audio_cache:
+            total_size = sum(item['size_mb'] for item in self.audio_cache.values())
+            print(f"🎵 Audio cache: {len(self.audio_cache)} files loaded ({total_size:.1f}MB)")
     
     def _load_audio_cache(self):
         """Load available audio files"""
@@ -178,10 +334,6 @@ class ResponseRouter:
                         'path': file_path,
                         'size_mb': round(file_size, 1)
                     }
-        
-        total_size = sum(item['size_mb'] for item in cache.values())
-        if cache:
-            print(f"🎵 Audio cache: {len(cache)} files loaded ({total_size:.1f}MB)")
         
         return cache
     
@@ -229,9 +381,6 @@ class ResponseRouter:
     
     def _select_audio_files(self, gpt_response, user_input):
         """Select appropriate audio files based on response"""
-        # Simplified audio selection logic
-        # In your actual implementation, you'd have more sophisticated matching
-        
         selected_files = []
         
         # Example selection logic based on keywords
@@ -256,7 +405,7 @@ class ResponseRouter:
     def process_audio_for_exotel(self, audio_files):
         """Process audio files for Exotel transmission"""
         if not audio_converter:
-            print("❌ Audio converter not available")
+            print("❌ No audio converter available")
             return []
         
         if not audio_files:
@@ -316,7 +465,10 @@ class ResponseRouter:
 
 # Initialize response router
 response_router = ResponseRouter()
-print("🤖 Response Router initialized: GPT-only mode (reliable & fast)")
+if audio_converter:
+    print("🤖 Response Router initialized: Audio conversion ready")
+else:
+    print("🤖 Response Router initialized: Text-only mode (no audio conversion)")
 
 # WebSocket connections storage
 active_connections = {}
@@ -404,8 +556,6 @@ async def process_exotel_message(websocket, call_sid, data):
         
         elif event == 'start':
             print(f"🎤 Stream started: {call_sid}")
-            
-            # Send initial greeting
             await send_initial_greeting(websocket)
         
         elif event == 'media':
@@ -432,31 +582,35 @@ async def send_initial_greeting(websocket):
         # Get greeting response
         greeting_response = response_router.get_gpt_response_with_audio("बताइए?")
         
-        # Process audio
-        audio_chunks = response_router.process_audio_for_exotel(greeting_response['audio_files'])
-        
-        if audio_chunks:
-            # Send audio chunks
-            for i, chunk in enumerate(audio_chunks):
-                message = {
-                    "event": "media",
-                    "sequenceNumber": str(i + 1),
-                    "media": {
-                        "payload": chunk
+        # Process audio if converter is available
+        if audio_converter and greeting_response['audio_files']:
+            audio_chunks = response_router.process_audio_for_exotel(greeting_response['audio_files'])
+            
+            if audio_chunks:
+                # Send audio chunks
+                for i, chunk in enumerate(audio_chunks):
+                    message = {
+                        "event": "media",
+                        "sequenceNumber": str(i + 1),
+                        "media": {
+                            "payload": chunk
+                        }
                     }
+                    await websocket.send(json.dumps(message))
+                    await asyncio.sleep(0.01)
+                
+                # Send completion mark
+                mark_message = {
+                    "event": "mark",
+                    "sequenceNumber": str(len(audio_chunks) + 1),
+                    "mark": {"name": "greeting_complete"}
                 }
-                await websocket.send(json.dumps(message))
-                await asyncio.sleep(0.01)  # Small delay between chunks
-            
-            # Send completion mark
-            mark_message = {
-                "event": "mark",
-                "sequenceNumber": str(len(audio_chunks) + 1),
-                "mark": {"name": "greeting_complete"}
-            }
-            await websocket.send(json.dumps(mark_message))
-            
-            print(f"✅ Sent greeting: {len(audio_chunks)} chunks")
+                await websocket.send(json.dumps(mark_message))
+                
+                print(f"✅ Sent greeting: {len(audio_chunks)} chunks")
+        else:
+            # Text-only response if no audio converter
+            print(f"🤖 AI: {greeting_response['text']} (text-only mode)")
         
     except Exception as e:
         print(f"❌ Error sending greeting: {e}")
@@ -464,13 +618,6 @@ async def send_initial_greeting(websocket):
 async def process_user_audio(websocket, call_sid, audio_payload):
     """Process incoming user audio and respond"""
     try:
-        # For now, just simulate processing
-        # In real implementation, you'd:
-        # 1. Decode base64 audio
-        # 2. Convert to text (STT)
-        # 3. Process with GPT
-        # 4. Generate audio response
-        
         # Simulate user said something
         user_text = "बताइए?"  # This would come from STT
         print(f"📞 User: {user_text}")
@@ -479,7 +626,7 @@ async def process_user_audio(websocket, call_sid, audio_payload):
         response_data = response_router.get_gpt_response_with_audio(user_text)
         audio_files = response_data['audio_files']
         
-        if audio_files:
+        if audio_converter and audio_files:
             file_names = [os.path.basename(f) for f in audio_files]
             duration = len(audio_files) * 450  # Estimate
             print(f"🎯 GPT → Audio: {' + '.join(file_names)} ({duration}ms)")
@@ -503,7 +650,7 @@ async def process_user_audio(websocket, call_sid, audio_payload):
             else:
                 print(f"❌ Failed to convert audio files")
         else:
-            print(f"🤖 AI: {response_data['text']}")
+            print(f"🤖 AI: {response_data['text']} (text-only mode)")
     
     except Exception as e:
         print(f"❌ Error processing user audio: {e}")
@@ -546,8 +693,8 @@ def main():
                                            stderr=subprocess.PIPE)
             time.sleep(3)  # Wait for ngrok to start
             
-            # Get ngrok URL (simplified - you might want to use ngrok API)
-            ngrok_url = "https://your-ngrok-url.ngrok-free.app"  # Replace with actual URL detection
+            # Get ngrok URL (you'll need to replace this with actual detection)
+            ngrok_url = "https://your-ngrok-url.ngrok-free.app"
             print(f"🌐 Public URL: {ngrok_url}")
             print(f"📞 EXOTEL SETUP:")
             print(f"   Incoming Call URL: {ngrok_url}/exotel/voice")
