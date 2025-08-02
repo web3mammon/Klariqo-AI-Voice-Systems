@@ -217,7 +217,7 @@ def play_test_audio(ws, stream_sid):
         return
     
     # Method 1: Try to load test.mp3 and send as-is
-    test_files = ["test.mp3", "test.pcm", "test.wav"]
+    test_files = ["40_calls_everymonth.mp3", "40_calls_everymonth.pcm", "test.wav"]
     
     for test_file in test_files:
         if os.path.exists(test_file):
