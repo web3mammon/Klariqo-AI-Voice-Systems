@@ -39,7 +39,7 @@ class Config:
     FLASK_DEBUG = False
     
     # File Paths
-    AUDIO_FOLDER = "audio_optimised/"
+    AUDIO_FOLDER = "audio_pcm/"
     LOGS_FOLDER = "logs/"
     TEMP_FOLDER = "temp/"
     

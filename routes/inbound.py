@@ -48,7 +48,7 @@ def handle_incoming_call():
     session.session_memory["intro_played"] = True
     
     # Play intro audio
-    intro_url = f"{request.url_root}audio_optimised/{selected_intro}"
+    intro_url = f"{request.url_root}audio_pcm/{selected_intro}"
     response.play(intro_url)
     
     # Log the intro response
@@ -94,7 +94,7 @@ def continue_inbound_conversation(call_sid):
             # Validate all files exist
             if audio_manager.validate_audio_chain(content):
                 for audio_file in audio_files:
-                    audio_url = f"{request.url_root}audio_optimised/{audio_file}"
+                    audio_url = f"{request.url_root}audio_pcm/{audio_file}"
                     twiml_response.play(audio_url)
                 
                 # Log audio response

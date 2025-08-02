@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-KLARIQO MAIN APPLICATION - WORKING MP3 TO PCM CONVERSION
-Uses pyminimp3 for reliable MP3 decoding and proper 320-byte chunking
+KLARIQO MAIN APPLICATION - AUDIO FILE SERVING
+Serves audio files directly without conversion
 """
 
 import os
@@ -143,7 +143,7 @@ def exotel_debug():
     """Debug endpoint"""
     
     return {
-        "status": "Exotel Working - pyminimp3 + PCM + 320-byte chunking",
+        "status": "Exotel Working - Direct audio streaming",
         "active_sessions": session_manager.get_active_count(),
         "cached_audio_files": len(audio_manager.cached_files),
         "endpoints": {
@@ -154,139 +154,31 @@ def exotel_debug():
         }
     }
 
-# ===== WORKING AUDIO CONVERSION FUNCTIONS =====
+# ===== AUDIO FILE SERVING FUNCTIONS =====
 
-def convert_mp3_to_pcm_working(mp3_data):
+def send_audio_exotel_direct(ws, pcm_data, stream_sid):
     """
-    Convert MP3 to PCM using available libraries (minimp3 or librosa)
-    """
-    try:
-        # Method 1: Try minimp3 (correct package name)
-        try:
-            import minimp3
-            
-            # Decode MP3 to raw audio data
-            decoder = minimp3.Decoder()
-            audio_data, sample_rate = decoder.decode(mp3_data)
-            
-            print(f"📊 Original: {sample_rate}Hz, {len(audio_data)} samples")
-            
-            # Convert to numpy for processing
-            import numpy as np
-            audio_array = np.array(audio_data, dtype=np.float32)
-            
-            # minimp3 returns mono by default, but let's check shape
-            if len(audio_array.shape) > 1 and audio_array.shape[1] == 2:
-                # Convert stereo to mono
-                audio_array = audio_array.mean(axis=1)
-                print("🔄 Converted stereo to mono")
-            
-            # Resample to 8kHz if needed
-            if sample_rate != 8000:
-                # Simple resampling by taking every Nth sample
-                resample_factor = sample_rate / 8000
-                indices = np.arange(0, len(audio_array), resample_factor).astype(int)
-                audio_array = audio_array[indices]
-                print(f"🔄 Resampled from {sample_rate}Hz to 8000Hz")
-            
-            # Convert to 16-bit PCM
-            # Normalize to [-1, 1] range then scale to 16-bit
-            audio_array = np.clip(audio_array, -1.0, 1.0)
-            pcm_16bit = (audio_array * 32767).astype(np.int16)
-            
-            # Convert to bytes (little-endian)
-            pcm_data = pcm_16bit.tobytes()
-            
-            print(f"✅ Converted using minimp3: {len(pcm_data)} bytes PCM")
-            return pcm_data
-            
-        except ImportError:
-            print("⚠️ minimp3 not available")
-        except Exception as e:
-            print(f"⚠️ minimp3 failed: {e}")
-        
-        # Method 2: Try using librosa (most reliable option)
-        try:
-            import librosa
-            import numpy as np
-            
-            # Load MP3 using librosa (this is very reliable)
-            audio_data, sr = librosa.load(io.BytesIO(mp3_data), sr=8000, mono=True)
-            
-            print(f"📊 Loaded with librosa: 8000Hz, mono, {len(audio_data)} samples")
-            
-            # Convert to 16-bit PCM
-            # Clip to [-1, 1] range and scale to 16-bit
-            audio_data = np.clip(audio_data, -1.0, 1.0)
-            pcm_16bit = (audio_data * 32767).astype(np.int16)
-            pcm_data = pcm_16bit.tobytes()
-            
-            print(f"✅ Converted using librosa: {len(pcm_data)} bytes PCM")
-            return pcm_data
-            
-        except ImportError:
-            print("⚠️ librosa not available")
-        except Exception as e:
-            print(f"⚠️ librosa failed: {e}")
-        
-        # Method 3: Try auto-installing librosa
-        try:
-            print("📦 Installing librosa...")
-            import subprocess
-            subprocess.check_call(["pip", "install", "librosa", "numpy"])
-            
-            # Try again after installation
-            import librosa
-            import numpy as np
-            
-            audio_data, sr = librosa.load(io.BytesIO(mp3_data), sr=8000, mono=True)
-            audio_data = np.clip(audio_data, -1.0, 1.0)
-            pcm_16bit = (audio_data * 32767).astype(np.int16)
-            pcm_data = pcm_16bit.tobytes()
-            
-            print(f"✅ Converted using librosa (after install): {len(pcm_data)} bytes PCM")
-            return pcm_data
-            
-        except Exception as e:
-            print(f"⚠️ Auto-install failed: {e}")
-        
-        # Method 4: Last resort - return None instead of misleading silence
-        print("❌ No working MP3 conversion method found")
-        print("💡 Install one of these:")
-        print("   pip install librosa numpy")
-        print("   pip install minimp3 numpy")
-        return None
-        
-    except Exception as e:
-        print(f"❌ All conversion attempts failed: {e}")
-        return None
-
-def send_audio_exotel_with_fallback(ws, mp3_data, stream_sid):
-    """
-    Send audio to Exotel with proper conversion and fallback handling
+    Send PCM data directly to Exotel with proper chunking per Exotel specifications
+    
+    Exotel requirements:
+    - Chunk size should be in multiples of 320 bytes
+    - Minimum chunk size: 3.2k (100ms data)
+    - Maximum chunk size: 100k
+    - Format: 16-bit, 8kHz, mono PCM (little-endian), base64 encoded
     """
     try:
         if not stream_sid:
             print("❌ No stream_sid available")
             return
         
-        print(f"🎵 Converting {len(mp3_data)} bytes of MP3 to PCM...")
-        
-        # Try to convert MP3 to PCM
-        pcm_data = convert_mp3_to_pcm_working(mp3_data)
-        
-        if pcm_data is None:
-            print("❌ MP3 conversion failed completely - skipping audio")
+        if not pcm_data:
+            print("❌ No PCM data provided")
             return
         
-        if len(pcm_data) < 320:
-            print("⚠️ PCM data too short, padding with silence")
-            pcm_data = pcm_data + b'\x00\x00' * (160 - len(pcm_data) // 2)
+        print(f"🎵 Sending {len(pcm_data)} bytes of PCM data...")
         
-        print(f"🎵 Got {len(pcm_data)} bytes of PCM data")
-        
-        # CRITICAL: Exotel requires chunks in multiples of 320 bytes
-        CHUNK_SIZE = 320
+        # Exotel chunk size requirements (multiples of 320 bytes)
+        CHUNK_SIZE = 3200  # 100ms of audio data (minimum recommended)
         total_chunks = len(pcm_data) // CHUNK_SIZE
         
         print(f"🎵 Sending {total_chunks} chunks of {CHUNK_SIZE} bytes each")
@@ -296,10 +188,6 @@ def send_audio_exotel_with_fallback(ws, mp3_data, stream_sid):
             start_pos = i * CHUNK_SIZE
             end_pos = start_pos + CHUNK_SIZE
             chunk = pcm_data[start_pos:end_pos]
-            
-            # Ensure chunk is exactly 320 bytes
-            if len(chunk) < CHUNK_SIZE:
-                chunk = chunk + b'\x00' * (CHUNK_SIZE - len(chunk))
             
             # Send chunk to Exotel
             message = json.dumps({
@@ -316,12 +204,15 @@ def send_audio_exotel_with_fallback(ws, mp3_data, stream_sid):
             if (i + 1) % 50 == 0:
                 print(f"📡 Sent {i + 1}/{total_chunks} chunks...")
         
-        # Handle remaining bytes
+        # Handle remaining bytes (pad to 320-byte boundary)
         remaining_bytes = len(pcm_data) % CHUNK_SIZE
         if remaining_bytes > 0:
             last_chunk_start = total_chunks * CHUNK_SIZE
             last_chunk = pcm_data[last_chunk_start:]
-            last_chunk = last_chunk + b'\x00' * (CHUNK_SIZE - len(last_chunk))
+            
+            # Pad to nearest 320-byte boundary
+            padding_needed = (320 - (len(last_chunk) % 320)) % 320
+            last_chunk = last_chunk + b'\x00' * padding_needed
             
             message = json.dumps({
                 'event': 'media',
@@ -334,7 +225,7 @@ def send_audio_exotel_with_fallback(ws, mp3_data, stream_sid):
             ws.send(message)
             print(f"📡 Sent final padded chunk")
         
-        print(f"✅ Audio sent successfully: {total_chunks} chunks")
+        print(f"✅ PCM audio sent successfully: {total_chunks} chunks")
         
     except Exception as e:
         print(f"❌ Send error: {e}")
@@ -342,7 +233,7 @@ def send_audio_exotel_with_fallback(ws, mp3_data, stream_sid):
         traceback.print_exc()
 
 def process_and_respond_exotel_final(transcript, call_sid, ws, stream_sid):
-    """Process input and respond with working audio conversion"""
+    """Process input and respond with direct audio serving"""
     try:
         session = session_manager.get_session(call_sid)
         if not session:
@@ -368,26 +259,26 @@ def process_and_respond_exotel_final(transcript, call_sid, ws, stream_sid):
         print(f"🤖 AI: {content} ({response_time_ms}ms)")
         
         if response_type == "AUDIO":
-            # Send audio files with working conversion
+            # Send PCM audio files directly
             audio_files = [f.strip() for f in content.split('+')]
             
             for audio_file in audio_files:
                 if audio_file in audio_manager.memory_cache:
-                    mp3_data = audio_manager.memory_cache[audio_file]
+                    pcm_data = audio_manager.memory_cache[audio_file]
                     
-                    # Use working audio conversion
-                    send_audio_exotel_with_fallback(ws, mp3_data, stream_sid)
+                    # Send PCM data directly to Exotel
+                    send_audio_exotel_direct(ws, pcm_data, stream_sid)
                     time.sleep(1.0)
                 else:
-                    print(f"❌ Audio file not in cache: {audio_file}")
+                    print(f"❌ PCM audio file not in cache: {audio_file}")
                     
             call_logger.log_nisha_audio_response(call_sid, content)
             
         elif response_type == "TTS":
-            # Generate TTS and send
+            # Generate TTS and send (note: TTS generates MP3, may need conversion)
             tts_audio_data = tts_engine.generate_audio(content, save_temp=False)
             if tts_audio_data:
-                send_audio_exotel_with_fallback(ws, tts_audio_data, stream_sid)
+                send_audio_exotel_direct(ws, tts_audio_data, stream_sid)
                     
             call_logger.log_nisha_tts_response(call_sid, content)
         
@@ -402,7 +293,7 @@ def process_and_respond_exotel_final(transcript, call_sid, ws, stream_sid):
 
 @sock.route('/exotel/media/<call_sid>')
 def exotel_media_stream(ws, call_sid):
-    """Handle Exotel WebSocket - Working MP3 to PCM conversion"""
+    """Handle Exotel WebSocket - Direct audio streaming"""
     
     session = session_manager.get_session(call_sid)
     if not session:
@@ -441,11 +332,10 @@ def exotel_media_stream(ws, call_sid):
     time.sleep(0.5)
     
     def transcript_checker():
-        """Monitor for completed transcripts - WORKING VERSION"""
+        """Monitor for completed transcripts"""
         while True:
             time.sleep(0.05)
             if session.check_for_completion():
-                # USE WORKING FUNCTION:
                 process_and_respond_exotel_final(session.completed_transcript, call_sid, ws, session.stream_sid)
                 session.reset_for_next_input()
     
@@ -635,9 +525,9 @@ def redirect_to_processing(transcript, call_sid):
     except Exception as e:
         print(f"❌ Processing error for {call_sid}: {e}")
 
-@app.route("/audio_optimised/<filename>")
+@app.route("/audio_pcm/<filename>")
 def serve_audio(filename):
-    """Serve audio files from memory cache"""
+    """Serve PCM audio files from memory cache"""
     return audio_manager.serve_audio_file(filename)
 
 @app.route("/temp/<filename>")
@@ -669,26 +559,20 @@ def serve_logs(filename):
     except Exception as e:
         return f"Error serving log: {e}", 500
 
-def test_pcm_conversion_accurate():
-    """Test PCM conversion with accurate reporting"""
+def test_audio_cache():
+    """Test audio cache availability"""
     try:
-        # Test with one of your cached files
         if audio_manager.memory_cache:
             test_file = list(audio_manager.memory_cache.keys())[0]
-            mp3_data = audio_manager.memory_cache[test_file]
+            audio_data = audio_manager.memory_cache[test_file]
             
-            print(f"🧪 Testing PCM conversion with {test_file}")
-            pcm_data = convert_mp3_to_pcm_working(mp3_data)
+            print(f"🧪 Testing audio cache with {test_file}")
             
-            if pcm_data is not None and len(pcm_data) > 1000:  # Valid PCM data
-                print(f"✅ REAL conversion successful: {len(mp3_data)} bytes MP3 → {len(pcm_data)} bytes PCM")
-                
-                # Verify it's the right format for 320-byte chunks
-                chunks_possible = len(pcm_data) // 320
-                print(f"📊 Can create {chunks_possible} chunks of 320 bytes")
+            if audio_data and len(audio_data) > 0:
+                print(f"✅ Audio file loaded: {len(audio_data)} bytes")
                 return True
             else:
-                print("❌ Conversion failed - no valid PCM data produced")
+                print("❌ Audio file empty or invalid")
                 return False
         else:
             print("⚠️ No audio files in cache to test")
@@ -766,37 +650,8 @@ def cleanup_temp_files():
         tts_engine.cleanup_temp_files()
 
 if __name__ == "__main__":
-    print("🚀 KLARIQO - AI Voice Agent (Working MP3→PCM Conversion)")
+    print("🚀 KLARIQO - AI Voice Agent (Direct Audio Serving)")
     print("=" * 40)
-    
-    # Check for required packages
-    packages_available = []
-    try:
-        import minimp3
-        packages_available.append("minimp3")
-    except ImportError:
-        pass
-    
-    try:
-        import librosa
-        packages_available.append("librosa")
-    except ImportError:
-        pass
-    
-    try:
-        import numpy as np
-        packages_available.append("numpy")
-    except ImportError:
-        pass
-    
-    if packages_available:
-        print(f"✅ Available packages: {', '.join(packages_available)}")
-    else:
-        print("⚠️ Missing required packages!")
-        print("💡 Run one of these:")
-        print("   pip install librosa numpy  (recommended)")
-        print("   pip install minimp3 numpy")
-        print("⚠️ Will attempt auto-install during first conversion...")
     
     # Validate configuration
     try:
@@ -806,13 +661,12 @@ if __name__ == "__main__":
         print(f"❌ Config error: {e}")
         exit(1)
     
-    # Test PCM conversion during startup
-    print("🧪 Testing audio conversion...")
-    if test_pcm_conversion_accurate():
-        print("✅ Audio conversion working!")
+    # Test audio cache during startup
+    print("🧪 Testing audio cache...")
+    if test_audio_cache():
+        print("✅ Audio cache working!")
     else:
-        print("⚠️ Audio conversion issues detected")
-        print("💡 Make sure to run: pip install pyminimp3 numpy")
+        print("⚠️ Audio cache issues detected")
     
     # Start ngrok
     public_url = start_ngrok()
@@ -827,7 +681,7 @@ if __name__ == "__main__":
         print()
         print("🔧 EXOTEL FLOW:")
         print("   Greeting → Voicebot")
-        print("   ✅ Real MP3→PCM conversion + 320-byte chunking")
+        print("   ✅ Direct audio streaming")
         print()
     else:
         print("⚠️ Running without ngrok")

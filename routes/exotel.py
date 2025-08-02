@@ -45,7 +45,7 @@ def handle_exotel_incoming():
     
     # Get base URL for serving files
     base_url = request.url_root.rstrip('/')
-    intro_url = f"{base_url}/audio_optimised/{selected_intro}"
+    intro_url = f"{base_url}/audio_pcm/{selected_intro}"
     
     # CRITICAL: Use dynamic CallSid in WebSocket URL
     webstream_url = f"wss://{request.host}/exotel/media/{call_sid}"
@@ -98,7 +98,7 @@ def continue_exotel_call(call_sid):
             play_elements = []
             
             for audio_file in audio_files:
-                audio_url = f"{base_url}/audio_optimised/{audio_file}"
+                audio_url = f"{base_url}/audio_pcm/{audio_file}"
                 play_elements.append(f"<Play>{audio_url}</Play>")
             
             # Log the response
