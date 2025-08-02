@@ -263,14 +263,17 @@ def process_and_respond_exotel_final(transcript, call_sid, ws, stream_sid):
             audio_files = [f.strip() for f in content.split('+')]
             
             for audio_file in audio_files:
-                if audio_file in audio_manager.memory_cache:
-                    pcm_data = audio_manager.memory_cache[audio_file]
+                # Ensure we use .mp3 extension for cache lookup (audio manager uses .mp3 keys)
+                cache_key = audio_file.replace('.pcm', '.mp3') if audio_file.endswith('.pcm') else audio_file
+                
+                if cache_key in audio_manager.memory_cache:
+                    pcm_data = audio_manager.memory_cache[cache_key]
                     
                     # Send PCM data directly to Exotel
                     send_audio_exotel_direct(ws, pcm_data, stream_sid)
                     time.sleep(1.0)
                 else:
-                    print(f"❌ PCM audio file not in cache: {audio_file}")
+                    print(f"❌ PCM audio file not in cache: {cache_key} (original: {audio_file})")
                     
             call_logger.log_nisha_audio_response(call_sid, content)
             

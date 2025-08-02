@@ -56,7 +56,7 @@ User asks examples of other clients → client_examples_bhopal1.mp3
 
 User asks about guaranteed results → proof_of_improvement1.mp3
 
-User asks pricing/cost/fees → klariqo_pricing.pcm + 3000_mins_breakdown.pcm + 40_calls_everymonth.pcm
+User asks pricing/cost/fees → klariqo_pricing.mp3 + 3000_mins_breakdown.mp3 + 40_calls_everymonth.mp3
 
 User says don't need now/will consider later → beyond_admissions_outreach.mp3
 
