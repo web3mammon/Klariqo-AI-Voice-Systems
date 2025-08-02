@@ -156,6 +156,36 @@ def exotel_debug():
 
 # ===== AUDIO FILE SERVING FUNCTIONS =====
 
+def convert_mp3_to_pcm_for_tts(mp3_data):
+    """
+    Convert MP3 from TTS to PCM format for Exotel
+    Only used for TTS fallback - pre-recorded audio is already PCM
+    """
+    try:
+        # Try using librosa for MP3 to PCM conversion
+        import librosa
+        import numpy as np
+        
+        # Load MP3 using librosa and convert to Exotel format
+        audio_data, sr = librosa.load(io.BytesIO(mp3_data), sr=8000, mono=True)
+        
+        print(f"📊 TTS Audio: Converted to 8000Hz mono, {len(audio_data)} samples")
+        
+        # Convert to 16-bit PCM (Exotel format)
+        audio_data = np.clip(audio_data, -1.0, 1.0)
+        pcm_16bit = (audio_data * 32767).astype(np.int16)
+        pcm_data = pcm_16bit.tobytes()
+        
+        print(f"✅ TTS converted to PCM: {len(pcm_data)} bytes")
+        return pcm_data
+        
+    except ImportError:
+        print("❌ librosa not available for TTS conversion")
+        return None
+    except Exception as e:
+        print(f"❌ TTS MP3 to PCM conversion failed: {e}")
+        return None
+
 def send_audio_exotel_direct(ws, pcm_data, stream_sid):
     """
     Send PCM data directly to Exotel with proper chunking per Exotel specifications
@@ -278,10 +308,15 @@ def process_and_respond_exotel_final(transcript, call_sid, ws, stream_sid):
             call_logger.log_nisha_audio_response(call_sid, content)
             
         elif response_type == "TTS":
-            # Generate TTS and send (note: TTS generates MP3, may need conversion)
+            # Generate TTS and convert MP3 to PCM for Exotel
             tts_audio_data = tts_engine.generate_audio(content, save_temp=False)
             if tts_audio_data:
-                send_audio_exotel_direct(ws, tts_audio_data, stream_sid)
+                # Convert MP3 from ElevenLabs to PCM for Exotel
+                pcm_data = convert_mp3_to_pcm_for_tts(tts_audio_data)
+                if pcm_data:
+                    send_audio_exotel_direct(ws, pcm_data, stream_sid)
+                else:
+                    print("❌ TTS MP3 to PCM conversion failed")
                     
             call_logger.log_nisha_tts_response(call_sid, content)
         
