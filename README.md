@@ -1,8 +1,8 @@
-# 🚀 Klariqo School System v2.5
+# 🚀 Klariqo Voice Systems - Base v2.5
 
-**AI-Powered Voice Sales Agent for Schools** | Ultra-Fast PCM Streaming | Patent-Pending Technology
+**AI-Powered Voice Agent Engine** | Ultra-Fast PCM Streaming | Patent-Pending Technology
 
-Klariqo uses our revolutionary **Modular Voice Response System** to create the most human-sounding AI voice agents that sell your product while you sleep. This implementation specifically targets school principals to pitch Klariqo's voice AI services.
+Core voice AI system for Klariqo's **Modular Voice Response System** that creates human-sounding AI voice agents. This is the base engine that can be adapted for any industry (schools, hotels, hospitals, etc.). Currently configured for schools as a reference implementation.
 
 ## 🆕 **Version 2.5 - Major Performance Updates**
 
