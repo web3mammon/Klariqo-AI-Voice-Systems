@@ -11,16 +11,19 @@ groq==0.4.2
 openai==1.35.3
 elevenlabs==0.2.24
 deepgram-sdk==3.2.7
+google-generativeai==0.3.2
 
-# Twilio for voice calls
+# Telephony services
 twilio==8.9.1
 
 # Data processing
 pandas==2.1.3
 requests==2.31.0
 
-# Audio processing
+# Audio processing (CRITICAL for production)
 audioop-lts==0.2.1  # For Python 3.12+ compatibility
+librosa==0.10.1     # MP3 to PCM conversion for TTS fallback
+numpy==1.24.3       # Required by librosa for audio processing
 
 # Optional: Google Sheets integration (future)
 # google-auth==2.23.4

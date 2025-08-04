@@ -135,9 +135,7 @@ The guide covers:
 git clone <your-repo>
 cd klariqo-school-system
 pip install -r requirements.txt
-
-# Install audio processing libraries for TTS fallback
-pip install librosa numpy
+# All dependencies including librosa & numpy are now included ✅
 ```
 
 ### 2. Configure Environment
@@ -495,7 +493,7 @@ This system is **immediately deployable** for any school. Here's what you get:
 git clone https://github.com/your-username/klariqo-schools.git
 cd klariqo-schools
 pip install -r requirements.txt
-pip install librosa numpy  # For TTS fallback
+# All dependencies including audio processing libraries are included ✅
 
 # 2. Configure environment (copy from development)
 # IMPORTANT: .env is not in git (security), so copy it manually
