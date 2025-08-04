@@ -54,6 +54,34 @@ Intelligent AI voice assistant for school reception that handles parent inquirie
 - **Exotel Integration**: Optimized for Indian telephony with proper PCM format
 - **Comprehensive Logging**: Tracks all conversations for school administration
 
+## 🔐 **IMPORTANT: Git & Audio Files Management**
+
+### **Why Audio Files Are Not in Git (This is CORRECT!)**
+```bash
+# Your .gitignore properly excludes:
+audio_pcm/              # PCM audio files (3.6MB total)
+audio_optimised/        # Converted audio files
+*.pcm                   # All PCM files
+.env                    # API keys and secrets
+logs/                   # Runtime logs
+temp/                   # Temporary files
+```
+
+**This is PROFESSIONAL best practice because:**
+- ✅ **Security**: Keeps API keys out of version control
+- ✅ **Performance**: Prevents 3.6MB+ audio files from bloating git history
+- ✅ **Scalability**: Separates code from assets (industry standard)
+- ✅ **Deployment**: Allows independent code and asset updates
+
+### **Current Production Status: 90% Ready** 
+- ✅ **All code is in git and deployable**
+- ✅ **17 PCM audio files exist locally** (`audio_pcm/` directory)
+- ✅ **Environment configuration complete** (`.env` with all API keys)
+- ⚠️ **Audio files need separate deployment** (see deployment section below)
+
+### **📋 For Freelancers & New Client Adaptation:**
+👉 **See [CLIENT_ADAPTATION_GUIDE.md](CLIENT_ADAPTATION_GUIDE.md)** for complete step-by-step instructions on adapting this system for different industries (hotels, hospitals, e-commerce, etc.)
+
 The guide covers:
 - ✅ **Content planning** for new industries (hotels, hospitals, etc.)
 - ✅ **Audio file creation** and management workflows  
@@ -461,22 +489,50 @@ This system is **immediately deployable** for any school. Here's what you get:
 
 ## 🏗️ **PRODUCTION DEPLOYMENT GUIDE**
 
-### **Step 1: Server Setup (30 minutes)**
+### **Step 1: Code Deployment (15 minutes)**
 ```bash
-# 1. Deploy on cloud server (AWS/DigitalOcean/Azure)
-git clone <your-repo>
-cd klariqo-school-system
+# 1. Deploy code from git to production server
+git clone https://github.com/your-username/klariqo-schools.git
+cd klariqo-schools
 pip install -r requirements.txt
+pip install librosa numpy  # For TTS fallback
 
-# 2. Configure environment
-cp .env.example .env
-# Add your API keys (see environment setup below)
+# 2. Configure environment (copy from development)
+# IMPORTANT: .env is not in git (security), so copy it manually
+scp .env production-server:/path/to/klariqo-schools/
+```
 
-# 3. Verify audio files are ready
+### **Step 1.5: Audio Files Deployment (15 minutes)**
+```bash
+# CRITICAL: Audio files are NOT in git (by design)
+# You have 3 deployment options:
+
+# Option A: Upload from development machine (Recommended)
+scp -r audio_pcm/ production-server:/path/to/klariqo-schools/
+scp -r audio_optimised/ production-server:/path/to/klariqo-schools/
+
+# Option B: Regenerate on production server
+scp audio_files.xlsx production-server:/path/to/klariqo-schools/
+# Then on production server:
+python excel_to_json.py
+python audio-optimiser.py
+
+# Option C: Force add to git (for simple deployment)
+git add -f audio_pcm/ audio_optimised/
+git commit -m "Add audio assets for deployment"
+git push
+# Then normal git clone will include audio files
+```
+
+### **Step 1.6: System Startup (5 minutes)**
+```bash
+# 1. Verify all components
 ls audio_pcm/  # Should show 17 .pcm files
+cat .env | head -5  # Should show API keys (not empty)
 
-# 4. Start system
+# 2. Start system
 python main.py
+# Should see: "🎵 PCM cache: 17 files loaded (3.6MB)"
 ```
 
 ### **Step 2: Exotel Configuration (15 minutes)**
