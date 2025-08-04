@@ -29,7 +29,7 @@ class Config:
     EXOTEL_PHONE = os.getenv('EXOTEL_PHONE')
     
     # ElevenLabs Voice Settings
-    VOICE_ID = "TRnaQb7q41oL7sV0w6Bu"  # Nisha's voice - school receptionist
+    VOICE_ID = "i4rWMMrtruhUSVvwWOr5"  # Nisha's voice - school receptionist
     
     # Deepgram Settings
     DEEPGRAM_MODEL = "nova-2"
