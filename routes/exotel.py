@@ -288,8 +288,8 @@ def process_exotel_user_input(transcript, call_sid):
         
         start_time = time.time()
         
-        # Log principal's input
-        call_logger.log_principal_input(call_sid, transcript)
+        # Log parent's input
+        call_logger.log_parent_input(call_sid, transcript)
         
         # Get AI response using your existing router
         response_type, content = response_router.get_school_response(transcript, session)
@@ -313,7 +313,7 @@ def process_exotel_user_input(transcript, call_sid):
         session.ready_for_twiml = True
         
         # Add to conversation history
-        session.add_to_history("Principal", transcript)
+        session.add_to_history("Parent", transcript)
         session.add_to_history("Nisha", f"<{response_type}: {content}>")
         
         # Clean logging

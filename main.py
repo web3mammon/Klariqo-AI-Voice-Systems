@@ -36,6 +36,7 @@ from logger import call_logger
 from routes.inbound import inbound_bp
 from routes.outbound import outbound_bp
 from routes.test import test_bp
+from routes.exotel import exotel_bp
 
 # Initialize Flask app with WebSocket support
 app = Flask(__name__)
@@ -52,6 +53,7 @@ audio_manager.reload_library()
 app.register_blueprint(inbound_bp)
 app.register_blueprint(outbound_bp, url_prefix='/outbound')
 app.register_blueprint(test_bp)
+app.register_blueprint(exotel_bp)  # Enhanced Exotel routes with dynamic variable tracking
 
 # Initialize Deepgram client
 config = DeepgramClientOptions(options={"keepalive": "true"})
@@ -64,9 +66,10 @@ current_ngrok_url = None
 def health_check():
     """Health check endpoint"""
     return f"""
-    <h1>🚀 Klariqo - AI Voice Agent</h1>
+    <h1>🏫 AVS International School - AI Voice Assistant</h1>
     <p><strong>Status:</strong> ✅ Running</p>
     <p><strong>Active Sessions:</strong> {session_manager.get_active_count()}</p>
+    <p><strong>Audio Files Cached:</strong> {len(audio_manager.memory_cache)}</p>
     <br>    
     <p><a href="/test">🧪 Test Page</a></p>
     <p><a href="/exotel/debug">🔧 Exotel Debug</a></p>
@@ -271,8 +274,8 @@ def process_and_respond_exotel_final(transcript, call_sid, ws, stream_sid):
         
         start_time = time.time()
         
-        # Log principal's input
-        call_logger.log_principal_input(call_sid, transcript)
+        # Log parent's input
+        call_logger.log_parent_input(call_sid, transcript)
         
         # Get AI response
         response_type, content = response_router.get_school_response(transcript, session)
@@ -281,7 +284,7 @@ def process_and_respond_exotel_final(transcript, call_sid, ws, stream_sid):
         response_time_ms = int((time.time() - start_time) * 1000)
         
         # Add to history
-        session.add_to_history("Principal", transcript)
+        session.add_to_history("Parent", transcript)
         session.add_to_history("Nisha", f"<{response_type}: {content}>")
         
         # Clean logging
@@ -515,8 +518,8 @@ def redirect_to_processing(transcript, call_sid):
         
         start_time = time.time()
         
-        # Log principal's input
-        call_logger.log_principal_input(call_sid, transcript)
+        # Log parent's input
+        call_logger.log_parent_input(call_sid, transcript)
         
         # Get AI response
         response_type, content = response_router.get_school_response(transcript, session)

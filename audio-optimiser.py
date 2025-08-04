@@ -71,22 +71,24 @@ def convert_mp3_to_pcm_file(mp3_path, pcm_path):
 def convert_all_mp3_to_pcm():
     """Convert all MP3 files to PCM format"""
     
-    input_folder = "audio_optimised"
+    input_folders = ["audio_optimised/inbound", "audio_optimised/outbound"]
     output_folder = "audio_pcm"
     
     # Create output folder
     os.makedirs(output_folder, exist_ok=True)
     
-    if not os.path.exists(input_folder):
-        print(f"❌ Input folder '{input_folder}' not found!")
-        print(f"💡 Create the folder and add your MP3 files")
-        return False
-    
-    # Get list of MP3 files
-    mp3_files = [f for f in os.listdir(input_folder) if f.lower().endswith('.mp3')]
+    # Collect MP3 files from both inbound and outbound folders
+    mp3_files = []
+    for input_folder in input_folders:
+        if not os.path.exists(input_folder):
+            print(f"⚠️ Input folder '{input_folder}' not found, skipping...")
+            continue
+        
+        folder_files = [os.path.join(input_folder, f) for f in os.listdir(input_folder) if f.lower().endswith('.mp3')]
+        mp3_files.extend(folder_files)
     
     if not mp3_files:
-        print(f"❌ No MP3 files found in '{input_folder}'")
+        print(f"❌ No MP3 files found in input folders")
         return False
     
     print(f"🎵 Found {len(mp3_files)} MP3 files to convert")
@@ -99,8 +101,8 @@ def convert_all_mp3_to_pcm():
     total_mp3_size = 0
     total_pcm_size = 0
     
-    for i, filename in enumerate(mp3_files, 1):
-        mp3_path = os.path.join(input_folder, filename)
+    for i, mp3_path in enumerate(mp3_files, 1):
+        filename = os.path.basename(mp3_path)
         pcm_filename = filename.replace('.mp3', '.pcm')
         pcm_path = os.path.join(output_folder, pcm_filename)
         

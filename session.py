@@ -18,6 +18,9 @@ class StreamingSession:
         # Session memory - tracks what has been discussed
         self.session_memory = Config.SESSION_FLAGS_TEMPLATE.copy()
         
+        # Dynamic session variables - tracks specific information gathered during conversation
+        self.session_variables = Config.SESSION_VARIABLES_TEMPLATE.copy()
+        
         # Conversation tracking
         self.conversation_history = []
         self.accumulated_text = ""
@@ -88,13 +91,38 @@ class StreamingSession:
         timestamp = time.strftime("%H:%M:%S")
         self.conversation_history.append(f"[{timestamp}] {speaker}: {message}")
     
+    def update_session_variable(self, variable_name, value):
+        """Update a specific session variable"""
+        if variable_name in self.session_variables:
+            old_value = self.session_variables[variable_name]
+            self.session_variables[variable_name] = value
+            print(f"📝 Updated {variable_name}: {old_value} → {value}")
+            return True
+        return False
+    
     def get_session_context(self):
-        """Get formatted session context for AI prompts"""
+        """Get current session context for AI prompt"""
+        context = []
+        
+        # Add dynamic variables with values
+        for var, value in self.session_variables.items():
+            if value is not None:
+                context.append(f"{var}: {value}")
+        
+        # Add conversation flags
+        active_flags = [flag for flag, status in self.session_memory.items() if status]
+        if active_flags:
+            context.append(f"Discussed topics: {', '.join(active_flags)}")
+        
+        return " | ".join(context) if context else "No context yet"
+    
+    def get_formatted_session_context(self):
+        """Get formatted session context for AI prompts (legacy method)"""
         context = "\n# SESSION MEMORY:\n"
         if self.session_memory["intro_played"]:
             context += "- Intro already done - DON'T use intro files again\n"
-        if self.session_memory["klariqo_explained"]:
-            context += "- Klariqo already explained\n"
+        if self.session_memory["admission_process_explained"]:
+            context += "- Admission process already explained\n"
         if self.session_memory["features_discussed"]:
             context += "- Features already discussed\n"
         if self.session_memory["pricing_mentioned"]:
@@ -106,7 +134,7 @@ class StreamingSession:
         
         # Add call direction context
         if self.call_direction == "outbound":
-            school_name = self.lead_data.get('school_name', 'school principal')
+            school_name = self.lead_data.get('school_name', 'parent/guardian')
             context += f"- OUTBOUND CALL to {school_name}\n"
         
         return context

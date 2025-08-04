@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-KLARIQO INBOUND CALL ROUTES
-Handles incoming calls from prospects/customers
+AVS INTERNATIONAL SCHOOL INBOUND CALL ROUTES
+Handles incoming calls from parents inquiring about admissions
 """
 
 import os
@@ -29,20 +29,19 @@ def handle_incoming_call():
     caller = request.form.get('From', 'Unknown')
     call_sid = request.form.get('CallSid', 'unknown')
     
-    print(f"📞 INBOUND call from {caller}")
+    print(f"📞 INBOUND call from parent: {caller}")
     
     # Log call start
     call_logger.log_call_start(call_sid, caller, "inbound")
     
-    # Create INBOUND session
+    # Create INBOUND session for parent inquiry
     session = session_manager.create_session(call_sid, call_direction="inbound")
     
     # Build TwiML response
     response = VoiceResponse()
     
-    # Select random intro for inbound calls (demo mode)
-    intro_options = ["intro_klariqo1.1.mp3", "intro_klariqo1.2.mp3"]
-    selected_intro = random.choice(intro_options)
+    # Use school intro for parent calls
+    selected_intro = "school_intro.mp3"
     
     # Mark intro as played in session memory
     session.session_memory["intro_played"] = True
@@ -81,7 +80,7 @@ def continue_inbound_conversation(call_sid):
         transcript = session.next_transcript
         
         # Add to conversation history
-        session.add_to_history("Principal", transcript)
+        session.add_to_history("Parent", transcript)
         session.add_to_history("Nisha", content)
         
         # Build TwiML response

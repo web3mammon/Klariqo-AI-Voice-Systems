@@ -48,6 +48,8 @@ Thumbs.db
 *.log
 *.db
 *.sqlite3
+logs/
+*.csv
 
 # Temporary files
 temp/
@@ -55,12 +57,23 @@ tmp/
 *.tmp
 *.temp
 
+# Excel lock files (temporary)
+~$*.xlsx
+~$*.xls
+
 # Audio files (large files that shouldn't be in repo)
 *.wav
 *.mp3
 *.m4a
 *.aac
+*.pcm
 test.mp3
+
+# Audio directories
+audio/
+audio_pcm/
+audio_optimised/
+audio_optimized/
 
 # Generated/cache files
 .cache/

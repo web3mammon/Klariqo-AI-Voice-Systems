@@ -81,7 +81,7 @@ class CallLogger:
         
         Args:
             call_sid: Twilio call SID
-            speaker: 'Principal' or 'Nisha'  
+            speaker: 'Parent' or 'Nisha'  
             message_type: 'transcript', 'audio', 'tts'
             content: The actual message content
             audio_files_used: List of audio files played (if any)
@@ -153,10 +153,10 @@ class CallLogger:
         
         print(f"📋 Call logged - Duration: {call_duration}s, Audio files: {unique_audio_files}, TTS: {call_data['tts_responses']}")
     
-    def log_principal_input(self, call_sid, transcript, response_time_ms=None):
-        """Log principal's speech input"""
+    def log_parent_input(self, call_sid, transcript, response_time_ms=None):
+        """Log parent's speech input"""
         self.log_conversation_turn(
-            call_sid, "Principal", "transcript", transcript, 
+            call_sid, "Parent", "transcript", transcript, 
             response_time_ms=response_time_ms
         )
     

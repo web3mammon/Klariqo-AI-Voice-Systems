@@ -18,65 +18,119 @@ class ResponseRouter:
         self.base_prompt = self._build_base_prompt()
         print("🤖 Response Router initialized: GPT-only mode (reliable & fast)")
     
+    def _extract_session_variables(self, user_input, session):
+        """Extract and update session variables from user input"""
+        user_lower = user_input.lower()
+        
+        # Extract admission type
+        if any(word in user_lower for word in ["first time", "firsttime", "pehli bar", "naya admission"]):
+            session.update_session_variable("admission_type", "firsttime")
+        elif any(word in user_lower for word in ["transfer", "dusre school se", "change school"]):
+            session.update_session_variable("admission_type", "transfer")
+        
+        # Extract class information
+        class_mappings = {
+            "kg1": "KG1", "kg 1": "KG1", "nursery": "KG1", "pre kg": "KG1",
+            "kg2": "KG2", "kg 2": "KG2", "ukg": "KG2",
+            "1st class": "Class 1", "class 1": "Class 1", "first class": "Class 1", "पहली क्लास": "Class 1",
+            "2nd class": "Class 2", "class 2": "Class 2", "second class": "Class 2", "दूसरी क्लास": "Class 2",
+            "3rd class": "Class 3", "class 3": "Class 3", "third class": "Class 3", "तीसरी क्लास": "Class 3",
+            "4th class": "Class 4", "class 4": "Class 4", "fourth class": "Class 4", "चौथी क्लास": "Class 4",
+            "5th class": "Class 5", "class 5": "Class 5", "fifth class": "Class 5", "पांचवी क्लास": "Class 5"
+        }
+        
+        for key, value in class_mappings.items():
+            if key in user_lower:
+                session.update_session_variable("admission_class", value)
+                break
+        
+        # Extract location for bus route
+        location_indicators = ["area", "location", "jagah", "रहते हैं", "से आना है", "pick up"]
+        if any(indicator in user_lower for indicator in location_indicators):
+            # Extract the location (simplified - could be enhanced with NLP)
+            words = user_input.split()
+            for i, word in enumerate(words):
+                if any(indicator in word.lower() for indicator in location_indicators):
+                    if i > 0:
+                        potential_location = words[i-1]
+                        session.update_session_variable("student_location", potential_location)
+                    break
+        
+        # Extract age information
+        import re
+        age_match = re.search(r'(\d+)\s*(?:years?|साल|वर्ष)', user_lower)
+        if age_match:
+            age = int(age_match.group(1))
+            session.update_session_variable("student_age", age)
+        
+        # Extract inquiry focus
+        if any(word in user_lower for word in ["fees", "fee", "फीस", "cost", "charges"]):
+            session.update_session_variable("inquiry_focus", "fees")
+        elif any(word in user_lower for word in ["transport", "bus", "बस", "pickup"]):
+            session.update_session_variable("inquiry_focus", "transport")
+        elif any(word in user_lower for word in ["activity", "activities", "sports", "खेल"]):
+            session.update_session_variable("inquiry_focus", "activities")
+        elif any(word in user_lower for word in ["admission", "एडमिशन", "दाखिला"]):
+            session.update_session_variable("inquiry_focus", "admission")
+    
     def _build_base_prompt(self):
         """Build the base prompt for GPT response selection"""
         
         # Get available files for dynamic selection
         available_files = self._get_available_files_by_category()
         
-        prompt = f"""You are Nisha's audio file selector for Klariqo sales calls. Your ONLY job is to match user input to the correct audio files below.
+        prompt = f"""You are Nisha's audio file selector — a polite, helpful voice assistant at AVS International School. Your job is to respond to parent queries with the right audio file snippet(s) from the school's library.
 
 🚨 CRITICAL RULES:
-- Reply with ONLY filenames (e.g., "file1.mp3 + file2.mp3")  
-- If NO rule matches, reply "GENERATE: I want to help you in the best way possible. Could you tell me what specific aspect you'd like to know more about?"
-- DO NOT repeat files that were recently played (check conversation memory)
-- 🚫 NEVER EVER include intro files (intro_klariqo*.mp3) - The intro has ALREADY been played during call setup
-- This is a cold call where intro is DONE - focus on the conversation flow only
+Always reply using only the correct filenames (e.g., admission_process_firsttime.mp3 + school_timings.mp3)
 
-📋 AVAILABLE FILES BY CATEGORY:
-{available_files}
+Never repeat a file that was recently played during this session
 
-📋 EXACT MATCHING RULES:
+If you’re unsure what to play, use:
+GENERATE: कृपया थोड़ा और स्पष्ट करें कि आप क्या जानना चाहते हैं?
 
-User shows interest/asks to tell more (बताइए, tell me, interesting, go ahead, yes, sure) → klariqo_provides_voice_agent1.mp3 + voice_agents_trained_details.mp3 + basically_agent_answers_parents.mp3 + agent_guides_onboarding_process.mp3
+📋 DYNAMIC SESSION VARIABLES YOU TRACK:
+Variable	Purpose	Example Values
+admission_type	Type of admission	"firsttime" or "transfer"
+admission_class	Class for admission	"KG1", "KG2", "Class 1", "Class 2", etc.
+student_location	Location for bus route	Area/locality name for transport
+student_age	Age for eligibility	Numeric age in years
+inquiry_focus	Main topic of interest	"fees", "transport", "admission", "activities"
 
-User asks how this helps if they already have receptionist/team → agents_need_no_breaks.mp3 + klariqo_concurrent_calls.mp3
+📋 INTELLIGENT AUDIO SELECTION RULES:
+Parent Input	Play These (based on session variables)
+Asks about admission (general)	
+→ If admission_type="firsttime": admission_process_firsttime.mp3
+→ If admission_type="transfer": admission_process_transfer.mp3
+→ If unknown: fees_ask_class.mp3 (to gather more info)
 
-User asks if people can tell it's AI/computer voice → klariqo_agents_sound_so_realistic.mp3 + klariqo_agents_sound_so_realistic2.mp3
+Mentions class + asks fees	
+→ If admission_class known: Use specific fee audio for that class
+→ If unknown: fees_ask_class.mp3 first
 
-User asks what if AI gives wrong response/gets broken → agents_wrong_answer_first_solution.mp3 + agents_wrong_answer_second_solution.mp3
+Asks transport/bus availability	
+→ If student_location unknown: bus_ask_location.mp3
+→ If student_location known: bus_fees.mp3
 
-User asks how it works/setup/time consuming → klariqo_low_maintan_start.mp3 + klariqo_adding_extra_features.mp3
+Says age/mentions child's age	admission_age_eligibility.mp3
 
-User asks if this is app/software/technical working → how_does_it_work_tech.mp3 + klariqo_adding_extra_features.mp3
+Standard queries (use existing logic):
+→ Asks timings: school_timings.mp3
+→ Asks CBSE: cbse_based.mp3  
+→ Asks activities: extra_activities.mp3
+→ Asks security: security.mp3
+→ Asks scholarships: scholarships_n_discounts.mp3
+→ Asks smart classes: smart_classes.mp3
+→ First time caller: school_intro.mp3
 
-User asks about technical failure → tech_stability_and_safety_net.mp3
+📤 EXAMPLES OF OUTBOUND USAGE (When School Calls Parent)
+Situation	Use These Files
+Calling for event invite	nisha_introduction_outbound.mp3 + annual_function_invite.mp3
+Following up on admission	nisha_introduction_outbound.mp3 + admission_last_date.mp3
+Announcing scholarship availability	nisha_introduction_outbound.mp3 + scholarships_n_discounts.mp3
 
-User asks examples of other clients → client_examples_bhopal1.mp3
-
-User asks about guaranteed results → proof_of_improvement1.mp3
-
-User asks pricing/cost/fees → klariqo_pricing.mp3 + 3000_mins_breakdown.mp3 + 40_calls_everymonth.mp3
-
-User says don't need now/will consider later → beyond_admissions_outreach.mp3
-
-User asks about call recording/transcripts → agents_call_recording.mp3
-
-User asks about minutes expiring/need extra → minutes_about_to_expire_fallback.mp3 + additional_minute_option_second_agent.mp3 + additional_minute_option_topup.mp3
-
-User wants demo/mentions WhatsApp demo → glad_for_demo_and_patent_mention.mp3 + meeting_with_founder.mp3
-
-User asks about patent details → founder_filed_patent.mp3
-
-User asks why meet founder → why_meet_founder.mp3 + when_can_founder_call.mp3
-
-User agrees to demo/founder meeting → mic_drop_Iam_an_AI_agent.mp3
-
-User acts surprised about AI reveal → shocked_after_agent_reveal_response.mp3
-
-User wants to end conversation → goodbye1.mp3
-
-🚫 FORBIDDEN: Never suggest intro_klariqo files - intro is already done!"""
+📋 AVAILABLE AUDIO FILES:
+{available_files}"""
         
         return prompt
     
@@ -129,18 +183,33 @@ User wants to end conversation → goodbye1.mp3
         return " | ".join(recent) if recent else "None"
     
     def _build_context_prompt(self, session, user_input):
-        """Build lightweight context prompt with memory (saves tokens!)"""
+        """Build context prompt with dynamic session variables"""
+        
+        # Extract and update session variables from user input
+        self._extract_session_variables(user_input, session)
         
         # Get recent conversation history
         recent_files = self._get_recent_files(session, limit=3)
         recent_conversation = self._get_recent_conversation(session, limit=2)
+        
+        # Get current session context
+        session_context = session.get_session_context()
         
         context_prompt = f"""
 🧠 CONVERSATION MEMORY:
 Recently played files (DON'T repeat): {', '.join(recent_files)}
 Recent conversation: {recent_conversation}
 
+📋 CURRENT SESSION VARIABLES:
+{session_context}
+
 📝 CURRENT USER INPUT: "{user_input}"
+
+🎯 INTELLIGENT SELECTION RULES:
+- If admission_type is known, use specific admission_process_firsttime.mp3 or admission_process_transfer.mp3
+- If admission_class is known and user asks about fees, use fees_ask_class.mp3 then mention specific fees for that class
+- If student_location is provided and user asks about transport, use bus_fees.mp3 with location context
+- If student_age is known, use admission_age_eligibility.mp3 for age-related queries
 
 Apply the rules from your system prompt. Choose appropriate files or GENERATE response."""
         

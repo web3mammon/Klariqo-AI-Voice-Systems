@@ -47,9 +47,9 @@ def call_test(phone_number):
             <p><strong>Agent:</strong> Nisha from Klariqo</p>
             <p><strong>Status:</strong> Your phone should ring in 5-10 seconds!</p>
             <br>
-            <p>🎭 <strong>Pretend to be a school principal!</strong></p>
-            <p>💡 Try asking: "What is Klariqo?", "How much?", "Demo?"</p>
-            <p>🎬 The AI will reveal itself at the end!</p>
+            <p>🎭 <strong>Pretend to be a parent inquiring about admission!</strong></p>
+            <p>💡 Try asking: "2nd class admission fees?", "Bus route hai?", "Documents required?"</p>
+            <p>🏫 Experience the school reception system!</p>
             <br>
             <p><a href="/test">← Back to Test Page</a></p>
             """
@@ -108,12 +108,12 @@ def test_page():
     <ol>
         <li>Click a test link above (update phone number first)</li>
         <li>Your phone should ring in 5-10 seconds</li>
-        <li>Answer the call and pretend to be a school principal</li>
-        <li>Nisha will pitch Klariqo to you with ultra-fast streaming!</li>
-        <li>Ask questions and experience the demo!</li>
+                    <li>Answer the call and pretend to be a parent asking about admission</li>
+        <li>Nisha will handle your school inquiry with ultra-fast responses!</li>
+        <li>Ask about fees, admission, timings, transport, etc!</li>
     </ol>
     
-    <p><strong>🎬 Your product is selling itself - at lightning speed!</strong></p>
+    <p><strong>🏫 Experience professional school reception - at lightning speed!</strong></p>
     
     <hr>
     <p><small>Klariqo v2.0 - Modular Architecture | Patent Pending</small></p>

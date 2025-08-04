@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-KLARIQO OUTBOUND CALL ROUTES  
-Handles outbound calls to schools and prospects
+AVS INTERNATIONAL SCHOOL OUTBOUND CALL ROUTES  
+Handles outbound calls from school to parents for events and follow-ups
 """
 
 import os
@@ -26,9 +26,9 @@ outbound_bp = Blueprint('outbound', __name__)
 # Initialize Twilio client
 twilio_client = Client(Config.TWILIO_ACCOUNT_SID, Config.TWILIO_AUTH_TOKEN)
 
-@outbound_bp.route("/twilio/outbound/<lead_id>", methods=['GET', 'POST'])
-def handle_outbound_call(lead_id):
-    """Handle OUTBOUND calls to schools/prospects"""
+@outbound_bp.route("/twilio/outbound/<parent_id>", methods=['GET', 'POST'])
+def handle_outbound_call(parent_id):
+    """Handle OUTBOUND calls from school to parents"""
     
     # Extract call information (handle both GET and POST)
     call_sid = request.form.get('CallSid') or request.args.get('CallSid', 'unknown')
@@ -39,31 +39,32 @@ def handle_outbound_call(lead_id):
     print(f"🔍 DEBUG: CallSid={call_sid}")
     print(f"🔍 DEBUG: To={to_number}, From={from_number}")
     
-    # Get lead data (in real implementation, fetch from database)
-    lead_data = {
-        'id': lead_id, 
-        'school_name': 'Test School Demo', 
-        'type': 'school',
-        'phone': to_number
+    # Get parent data (in real implementation, fetch from database)
+    parent_data = {
+        'id': parent_id, 
+        'parent_name': 'Parent/Guardian', 
+        'type': 'parent',
+        'phone': to_number,
+        'call_purpose': 'event_invitation'  # or 'admission_followup', 'scholarship_info'
     }
     
-    print(f"🏫 OUTBOUND call connected to {lead_data['school_name']}")
+    print(f"📞 OUTBOUND call to parent: {parent_data['parent_name']}")
     
     # Log call start
-    call_logger.log_call_start(call_sid, lead_data['phone'], "outbound", lead_data)
+    call_logger.log_call_start(call_sid, parent_data['phone'], "outbound", parent_data)
     
     # Create OUTBOUND session
     session = session_manager.create_session(
         call_sid, 
         call_direction="outbound", 
-        lead_data=lead_data
+        lead_data=parent_data
     )
     
     # Build TwiML response
     response = VoiceResponse()
     
-    # Use consistent intro for outbound (sales mode)
-    selected_intro = "intro_klariqo.mp3"
+    # Use outbound intro for school calling parents
+    selected_intro = "nisha_introduction_outbound.mp3"
     session.session_memory["intro_played"] = True
     
     # Play intro audio
@@ -102,7 +103,7 @@ def continue_outbound_conversation(call_sid):
         transcript = session.next_transcript
         
         # Add to conversation history
-        session.add_to_history("Principal", transcript)
+        session.add_to_history("Parent", transcript)
         session.add_to_history("Nisha", content)
         
         # Build TwiML response
