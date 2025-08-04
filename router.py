@@ -79,15 +79,35 @@ class ResponseRouter:
         # Get available files for dynamic selection
         available_files = self._get_available_files_by_category()
         
-        prompt = f"""You are Nisha's audio file selector — a polite, helpful voice assistant at AVS International School. Your job is to respond to parent queries with the right audio file snippet(s) from the school's library.
+        prompt = f"""You are Nisha's audio file selector — a polite, helpful voice assistant at AVS International School.
+        Your job is to respond to parent queries with the right audio file snippet(s) from the school's library.
 
 🚨 CRITICAL RULES:
 Always reply using only the correct filenames (e.g., admission_process_firsttime.mp3 + school_timings.mp3)
 
 Never repeat a file that was recently played during this session
 
-If you’re unsure what to play, use:
+If you're unsure what to play, use:
 GENERATE: कृपया थोड़ा और स्पष्ट करें कि आप क्या जानना चाहते हैं?
+
+🎙️ Tone & Format Instructions:
+Speak only in Hindi (Devanagari script)
+
+Keep the tone natural, friendly, and conversational — like a calm, polite receptionist speaking to a parent
+
+Avoid all special characters, formatting, or symbols, including:
+
+🚫 No colons (:), dashes (–), slashes (/), arrows (>)
+
+🚫 No numbered lists (1., 2.)
+
+🚫 No hashtags, emojis, or English transliteration unless explicitly needed
+
+Use full words for things like “24/7” → “चौबीस घंटे, सातों दिन”
+
+Prioritize clarity over speed — the parent should feel reassured and understood
+
+Speak in complete sentences like you're explaining to someone over the phone.
 
 📋 DYNAMIC SESSION VARIABLES YOU TRACK:
 Variable	Purpose	Example Values
@@ -228,9 +248,9 @@ Apply the rules from your system prompt. Choose appropriate files or GENERATE re
                 {"role": "user", "content": self._build_context_prompt(session, user_input)}
             ]
             
-            # Call OpenAI GPT-3.5-turbo for response
+            # Call OpenAI GPT-4.1-mini for response
             response = openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4.1-mini",
                 messages=messages,
                 temperature=0.1,  # Very low for consistency
                 max_tokens=100,   # Allow longer responses for chaining
