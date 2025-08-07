@@ -1,23 +1,41 @@
 {
   "introductions": {
-    "school_intro.mp3": "AVS International एक modern CBSE-affiliated school है, जो academic excellence के साथ-साथ बच्चों के holistic development पर भी focus करता है। हमारा campus smart classrooms, CCTV surveillance, और co-curricular activities से well-equipped है। हम AVS International में सिर्फ़ पढ़ाई नहीं, बल्कि overall growth पर भी बहुत ध्यान देते हैं — जैसे music, sports, और tech-based learning।",
-    "nisha_introduction_outbound.mp3": "नमस्ते मै निशा बोल रही हूँ from AVS International School. क्या आपके पास जल्दी से बात करने के लिए 2 मिनट हैं?"
+    "nisha_introduction_outbound.mp3": "नमस्ते मै निशा बोल रही हूँ from AVS International School. क्या आपके पास जल्दी से बात करने के लिए 2 मिनट हैं?",
+    "nisha_intro.mp3": "Namaste! AVS International School se mai Nisha bol rahi hu."
+  },
+  "school_info": {
+    "school_intro.mp3": "AVS International एक modern CBSE-affiliated school है, जो academic excellence के साथ-साथ बच्चों के holistic development पर भी focus करता है। हमारा campus smart classrooms, CCTV surveillance, और co-curricular activities से well-equipped है।” “हम AVS International में सिर्फ़ पढ़ाई नहीं, बल्कि overall growth पर भी बहुत ध्यान देते हैं — जैसे music, sports, और tech-based learning।"
+  },
+  "admission_process": {
+    "admission_last_date.mp3": "Admission Form जमा करने की last date 15 March है। Around 25th March, onboarding and assessment procedure शुरू हो जाएगी.",
+    "admission_process_transfer.mp3": "जी बिल्कुल! आप स्कूल से admission form प्राप्त कर सकते हैं या हमारी website से download कर सकते हैं। form को required documents के साथ जमा करें। आपको birth certificate और passport size photo की आवश्यकता होगी। क्योंकि दूसरे स्कूल से student का ट्रांसफर हो रहा है, तो आपका पिछले स्कूल से एक transfer certificate भी लेकर हमें फॉर्म के साथ जमा करना होगा. Form submit करने के बाद, हम आपको और आपके बच्चे को onboarding interview के लिए invite करेंगे, साथ ही आपके बच्चे को एक pre assessment exam भी देनी पड़ सकती है, क्योंकि हमारी admission procedures kaafi strict है।",
+    "admission_process_firsttime.mp3": "जी बिल्कुल! आप स्कूल से admission form प्राप्त कर सकते हैं या हमारी website से download कर सकते हैं। form को required documents के साथ जमा करें। आपको birth certificate और passport size photo की आवश्यकता होगी। Form submit करने के बाद, हम आपको और आपके बच्चे को onboarding interview के लिए invite करेंगे, साथ ही आपके बच्चे को एक pre assessment exam भी देनी पड़ सकती है, क्योंकि हमारी admission procedures kaafi strict है।"
+  },
+  "fees_and_pricing": {
+    "scholarships_n_discounts.mp3": "बिलकुल! हमारे new students के लिए merit based scholarships available हैं, और कुछ cases में हम कुछ selected students को discounted fees भी दे सकते हैं। क्या आप चाहेंगे कि मैं अधिक जानकारी के लिए call को Admission counsellor को transfer कर दूँ?",
+    "bus_fees.mp3": "जी bus की fees लगभग 500 से 800 रुपये होती है, लेकिन आप इसे और confirm करने के लिए एक बार school आके बात कर लीजिये।",
+    "fees_ask_class.mp3": "बिल्कुल! Fees के बारे में, क्या मैं आपके बच्चे के admission की class के बारे में जान सक्ती हूँ? यह उसी पर depend करता है।"
+  },
+  "school_facilities": {
+    "smart_classes.mp3": "Ofcourse! Classrooms smart boards से equipped हैं, जिससे पढ़ाई interactive और engaging होती है, बच्चों को concepts ज़्यादा अच्छे से समझ आते हैं। हर class में audio-visual teaching tools, projector-based lessons और activity-based learning modules available हैं।",
+    "security.mp3": "जी, AVS International में security हमारी top priority है, और हम इसे lightly नहीं लेते। हमारे स्कूल में 24 7 CCTV camera लगे हैं, और हमारी building के सभी entry और exit points पर security guards, active रहते हैं। इसके अलावा, हमारे कुछ teachers and staff हमेशा corridors में regularly घूमते रहते हैं ताकि internally bhi कोई mischief न हो।",
+    "cbse_based.mp3": "Ji हाँ, हमारा स्कूल CBSE based है।"
+  },
+  "transport_and_bus": {
+    "bus_ask_location.mp3": "Ofcourse! Please बताएं student कहां से bus में चढ़ना चाहता है?"
+  },
+  "school_activities": {
+    "extra_activities.mp3": "हमारे school में music, dance, football, basketball और skating जैसी कई activities होती हैं। Not only this, इसके अलावा भी काफ़ी नई activities हम regularly introduce करते रहते हैं."
+  },
+  "school_events": {
+    "annual_function_events.mp3": "सुनकर बहुत अच्छा लगा। Actually, हमने बहुत सारे events plan किए हैं, जैसे dance, music, bike show भी होगा, और students ने एक patriotic play के लिए भी खूब मेहनत की है। So yeah [chuckle], इस साल के लिए बहुत कुछ plan किया गया है।",
+    "annual_function_invite.mp3": "Fantastic! Actually, मैंने आपको यह बताने के लिए call किया था कि AVS International, 18 september को अपना annual function host कर रहा है, और हम चाहते हैं कि आप इस function का हिस्सा बनें। क्या आप इसमें interested हैं ?"
+  },
+  "conclusion": {
+    "thank_you_goodbye.mp3": "Ofcourse! कभी भी आपको कोई aur doubt हो या सवाल हो तो कॉल कर लीजिएगा। Thank you for calling AVS International."
   },
   "miscellaneous": {
-    "extra_activities.mp3": "हमारे school में music, dance, football, basketball और skating जैसी कई activities होती हैं। Not only this, इसके अलावा भी काफ़ी नई activities हम regularly introduce करते रहते हैं.",
-    "smart_classes.mp3": "Ofcourse! Classrooms smart boards से equipped हैं, जिससे पढ़ाई interactive और engaging होती है, बच्चों को concepts ज़्यादा अच्छे से समझ आते हैं। हर class में audio-visual teaching tools, projector-based lessons और activity-based learning modules available हैं।",
-    "scholarships_n_discounts.mp3": "बिलकुल! हमारे new students के लिए merit based scholarships available हैं, और कुछ cases में हम कुछ selected students को discounted fees भी दे सकते हैं। क्या आप चाहेंगे कि मैं अधिक जानकारी के लिए call को Admission counsellor को transfer कर दूँ?",
-    "security.mp3": "जी, AVS International में security हमारी top priority है, और हम इसे lightly नहीं लेते। हमारे स्कूल में 24 7 CCTV camera लगे हैं, और हमारी building के सभी entry और exit points पर security guards, active रहते हैं। इसके अलावा, हमारे कुछ teachers and staff हमेशा corridors में regularly घूमते रहते हैं ताकि internally bhi कोई mischief न हो।",
-    "annual_function_events.mp3": "सुनकर बहुत अच्छा लगा। Actually, हमने बहुत सारे events plan किए हैं, जैसे dance, music, bike show भी होगा, और students ने एक patriotic play के लिए भी खूब मेहनत की है। So yeah [chuckle], इस साल के लिए बहुत कुछ plan किया गया है।",
-    "annual_function_invite.mp3": "Fantastic! Actually, मैंने आपको यह बताने के लिए call किया था कि AVS International, 18 september को अपना annual function host कर रहा है, और हम चाहते हैं कि आप इस function का हिस्सा बनें। क्या आप इसमें interested हैं ?",
-    "admission_last_date.mp3": "Admission Form जमा करने की last date 15 March है। Around 25th March, onboarding and assessment procedure शुरू हो जाएगी.",
-    "cbse_based.mp3": "Ji हाँ, हमारा स्कूल CBSE based है।",
-    "bus_fees.mp3": "जी bus की fees लगभग 500 से 800 रुपये होती है, लेकिन आप इसे और confirm करने के लिए एक बार school आके बात कर लीजिये।",
     "school_timings.mp3": "School timings are, Monday से Friday सुबह आठ बजे से दोपहर दो बजे तक है।",
-    "bus_ask_location.mp3": "Ofcourse! Please बताएं student कहां से bus में चढ़ना चाहता है?",
-    "fees_ask_class.mp3": "बिल्कुल! Fees के बारे में, क्या मैं आपके बच्चे के admission की class के बारे में जान सक्ती हूँ? यह उसी पर depend करता है।",
-    "admission_process_transfer.mp3": "जी बिल्कुल! आप स्कूल से admission form प्राप्त कर सकते हैं या हमारी website से download कर सकते हैं। form को required documents के साथ जमा करें। आपको birth certificate और passport size photo की आवश्यकता होगी। क्योंकि दूसरे स्कूल से student का ट्रांसफर हो रहा है, तो आपका पिछले स्कूल से एक transfer certificate भी लेकर हमें फॉर्म के साथ जमा करना होगा. Form submit करने के बाद, हम आपको और आपके बच्चे को onboarding interview के लिए invite करेंगे, साथ ही आपके बच्चे को एक pre assessment exam भी देनी पड़ सकती है, क्योंकि हमारी admission procedures kaafi strict है।",
-    "admission_process_firsttime.mp3": "जी बिल्कुल! आप स्कूल से admission form प्राप्त कर सकते हैं या हमारी website से download कर सकते हैं। form को required documents के साथ जमा करें। आपको birth certificate और passport size photo की आवश्यकता होगी। Form submit करने के बाद, हम आपको और आपके बच्चे को onboarding interview के लिए invite करेंगे, साथ ही आपके बच्चे को एक pre assessment exam भी देनी पड़ सकती है, क्योंकि हमारी admission procedures kaafi strict है।",
-    "admission_age_eligibility.mp3": "Age eligibility के बारे में बताती हूं। Different classes के लिए different age criteria है। KG1 के लिए normally 3-4 years, KG2 के लिए 4-5 years। अगर आप अपने बच्चे की exact age बताएं तो मैं बेहतर guidance दे सकूंगी।"
+    "ji_bilkul.mp3": "Ji Bilkul"
   }
 }

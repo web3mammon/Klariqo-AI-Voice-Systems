@@ -128,23 +128,98 @@ User wants to end conversation → goodbye1.mp3
         return " | ".join(recent) if recent else "None"
     
     def _build_context_prompt(self, session, user_input):
-        """Build lightweight context prompt with memory (saves tokens!)"""
+        """Build context prompt with dynamic session variables"""
+        
+        # Extract and update session variables from user input
+        self._extract_session_variables(user_input, session)
         
         # Get recent conversation history
         recent_files = self._get_recent_files(session, limit=3)
         recent_conversation = self._get_recent_conversation(session, limit=2)
+        
+        # Get current session context
+        session_context = session.get_session_context()
         
         context_prompt = f"""
 🧠 CONVERSATION MEMORY:
 Recently played files (DON'T repeat): {', '.join(recent_files)}
 Recent conversation: {recent_conversation}
 
+📋 CURRENT SESSION VARIABLES:
+{session_context}
+
 📝 CURRENT USER INPUT: "{user_input}"
+
+🎯 INTELLIGENT SELECTION RULES:
+- If admission_type is known, use specific admission_process_firsttime.mp3 or admission_process_transfer.mp3
+- If admission_class is known and user asks about fees, use fees_ask_class.mp3 then mention specific fees for that class
+- If student_location is provided and user asks about transport, use bus_fees.mp3 with location context
+- If student_age is known, use admission_age_eligibility.mp3 for age-related queries
 
 Apply the rules from your system prompt. Choose appropriate files or GENERATE response."""
         
         return context_prompt
     
+    def _extract_session_variables(self, user_input, session):
+        """Extract and update session variables from user input"""
+        user_lower = user_input.lower()
+        
+        # Extract admission type
+        if any(word in user_lower for word in ["first time", "firsttime", "pehli bar", "naya admission"]):
+            session.update_session_variable("admission_type", "firsttime")
+        elif any(word in user_lower for word in ["transfer", "dusre school se", "change school"]):
+            session.update_session_variable("admission_type", "transfer")
+        
+        # Extract class information
+        class_mappings = {
+            "kg1": "KG1", "kg 1": "KG1", "nursery": "KG1", "pre kg": "KG1",
+            "kg2": "KG2", "kg 2": "KG2", "ukg": "KG2",
+            "1st class": "Class 1", "class 1": "Class 1", "first class": "Class 1", "पहली क्लास": "Class 1",
+            "2nd class": "Class 2", "class 2": "Class 2", "second class": "Class 2", "दूसरी क्लास": "Class 2",
+            "3rd class": "Class 3", "class 3": "Class 3", "third class": "Class 3", "तीसरी क्लास": "Class 3",
+            "4th class": "Class 4", "class 4": "Class 4", "fourth class": "Class 4", "चौथी क्लास": "Class 4",
+            "5th class": "Class 5", "class 5": "Class 5", "fifth class": "Class 5", "पांचवी क्लास": "Class 5"
+        }
+        
+        for class_key, class_value in class_mappings.items():
+            if class_key in user_lower:
+                session.update_session_variable("admission_class", class_value)
+                break
+        
+        # Extract location information
+        location_keywords = ["location", "area", "locality", "address", "where", "कहाँ", "जगह"]
+        if any(keyword in user_lower for keyword in location_keywords):
+            # Simple extraction - could be enhanced with NLP
+            words = user_input.split()
+            for i, word in enumerate(words):
+                if word.lower() in location_keywords and i + 1 < len(words):
+                    location = words[i + 1]
+                    session.update_session_variable("student_location", location)
+                    break
+        
+        # Extract age information
+        import re
+        age_pattern = r'(\d+)\s*(?:years?|saal|उम्र)'
+        age_match = re.search(age_pattern, user_lower)
+        if age_match:
+            age = age_match.group(1)
+            session.update_session_variable("student_age", age)
+        
+        # Extract inquiry focus
+        focus_keywords = {
+            "fees": ["fees", "fee", "charges", "cost", "price", "फीस"],
+            "admission": ["admission", "admit", "enroll", "admission", "प्रवेश"],
+            "transport": ["transport", "bus", "vehicle", "pickup", "drop", "परिवहन"],
+            "activities": ["activities", "sports", "games", "extra", "activities", "गतिविधियां"],
+            "timings": ["timing", "time", "schedule", "hours", "समय"],
+            "security": ["security", "safety", "protection", "सुरक्षा"]
+        }
+        
+        for focus, keywords in focus_keywords.items():
+            if any(keyword in user_lower for keyword in keywords):
+                session.update_session_variable("inquiry_focus", focus)
+                break
+
     def get_school_response(self, user_input, session):
         """Get appropriate response for school conversation - GEMINI FLASH MODE"""
         

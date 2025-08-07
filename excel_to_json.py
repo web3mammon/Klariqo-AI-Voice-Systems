@@ -17,9 +17,18 @@ def excel_to_json():
     if not os.path.exists(excel_file):
         print(f"❌ Excel file '{excel_file}' not found!")
         print(f"💡 Create an Excel file with columns:")
-        print(f"   - Filename")
-        print(f"   - Transcript") 
-        print(f"   - Category (optional)")
+        print(f"   - Filename (e.g., school_intro.mp3)")
+        print(f"   - Transcript (Hindi/English text)")
+        print(f"   - Category (optional - will auto-detect):")
+        print(f"     * introductions")
+        print(f"     * school_info")
+        print(f"     * admission_process")
+        print(f"     * fees_and_pricing")
+        print(f"     * school_facilities")
+        print(f"     * transport_and_bus")
+        print(f"     * school_activities")
+        print(f"     * school_events")
+        print(f"     * conclusion")
         print(f"   - Alternate_Version (optional)")
         return False
     
@@ -47,12 +56,15 @@ def excel_to_json():
         # Initialize the JSON structure
         audio_snippets = {
             "introductions": {},
-            "klariqo_explanation": {},
-            "key_features": {},
-            "technical_concerns": {},
-            "pricing": {},
-            "demo_meeting": {},
-            "ai_reveal_closing": {},
+            "school_info": {},
+            "admission_process": {},
+            "fees_and_pricing": {},
+            "school_facilities": {},
+            "transport_and_bus": {},
+            "school_activities": {},
+            "school_events": {},
+            "conclusion": {},
+            "miscellaneous": {},
             "quick_responses": {}
         }
         
@@ -147,52 +159,98 @@ def excel_to_json():
         return False
 
 def guess_category(filename):
-    """Smart guess category based on filename"""
+    """Smart guess category based on filename for school content"""
     filename_lower = filename.lower()
     
-    if "intro" in filename_lower:
+    # Person introduction files (Nisha introducing herself)
+    if any(word in filename_lower for word in ["nisha_intro", "nisha_introduction"]):
         return "introductions"
-    elif any(word in filename_lower for word in ["pricing", "cost", "breakdown", "calls"]):
-        return "pricing"
-    elif any(word in filename_lower for word in ["demo", "meeting", "founder", "patent"]):
-        return "demo_meeting"
-    elif any(word in filename_lower for word in ["agent", "concurrent", "breaks", "realistic"]):
-        return "key_features"
-    elif any(word in filename_lower for word in ["tech", "wrong", "error", "stability"]):
-        return "technical_concerns"
-    elif any(word in filename_lower for word in ["provides", "voice", "trained", "basically"]):
-        return "klariqo_explanation"
-    elif any(word in filename_lower for word in ["goodbye", "mic_drop", "shocked"]):
-        return "ai_reveal_closing"
+    
+    # School information files (when user asks about the school)
+    elif any(word in filename_lower for word in ["school_intro"]):
+        return "school_info"
+    
+    # Admission process files
+    elif any(word in filename_lower for word in ["admission", "process", "form", "transfer", "firsttime", "last_date"]):
+        return "admission_process"
+    
+    # Fees and pricing files
+    elif any(word in filename_lower for word in ["fees", "pricing", "cost", "charges", "scholarship", "discount"]):
+        return "fees_and_pricing"
+    
+    # School facilities files
+    elif any(word in filename_lower for word in ["smart", "cctv", "security", "cbse", "classroom"]):
+        return "school_facilities"
+    
+    # Transport and bus files
+    elif any(word in filename_lower for word in ["bus", "transport", "location", "route"]):
+        return "transport_and_bus"
+    
+    # School activities files
+    elif any(word in filename_lower for word in ["activities", "sports", "music", "dance", "extra"]):
+        return "school_activities"
+    
+    # School events files
+    elif any(word in filename_lower for word in ["event", "function", "annual", "celebration"]):
+        return "school_events"
+    
+    # Conclusion and goodbye files
+    elif any(word in filename_lower for word in ["goodbye", "thank", "conclusion"]):
+        return "conclusion"
+    
+    # Timings and general info
+    elif any(word in filename_lower for word in ["timing", "time", "schedule", "ji_bilkul"]):
+        return "miscellaneous"
+    
     else:
         return "miscellaneous"
 
 def create_sample_excel():
-    """Create a sample Excel file with the right structure"""
+    """Create a sample Excel file with the right structure for school content"""
     sample_data = {
         'Filename': [
-            'intro_klariqo1.1.mp3',
-            'klariqo_provides_voice_agent1.mp3',
-            'agents_need_no_breaks.mp3',
-            'klariqo_pricing1.1.mp3'
+            'nisha_intro.mp3',
+            'school_intro.mp3',
+            'admission_process_firsttime.mp3',
+            'fees_ask_class.mp3',
+            'smart_classes.mp3',
+            'bus_fees.mp3',
+            'extra_activities.mp3',
+            'annual_function_invite.mp3',
+            'thank_you_goodbye.mp3'
         ],
         'Transcript': [
-            'नमस्ते! मैं निशा बोल रही हूं Klariqo से...',
-            'बिलकुल ! तो Klariqo आपकी help करता है...',
-            'इस एजेंट की सबसे खास बात यह है कि ये twenty four seven काम करते हैं',
-            'हमने हमारी pricing का aim रखा है, to be as manageable for you as possible'
+            'Namaste! AVS International School se mai Nisha bol rahi hu.',
+            'AVS International एक modern CBSE-affiliated school है, जो academic excellence के साथ-साथ बच्चों के holistic development पर भी focus करता है।',
+            'जी बिल्कुल! आप स्कूल से admission form प्राप्त कर सकते हैं या हमारी website से download कर सकते हैं।',
+            'बिल्कुल! Fees के बारे में, क्या मैं आपके बच्चे के admission की class के बारे में जान सक्ती हूँ?',
+            'Ofcourse! Classrooms smart boards से equipped हैं, जिससे पढ़ाई interactive और engaging होती है।',
+            'जी bus की fees लगभग 500 से 800 रुपये होती है, लेकिन आप इसे और confirm करने के लिए एक बार school आके बात कर लीजिये।',
+            'हमारे school में music, dance, football, basketball और skating जैसी कई activities होती हैं।',
+            'Fantastic! Actually, मैंने आपको यह बताने के लिए call किया था कि AVS International, 18 september को अपना annual function host कर रहा है।',
+            'Ofcourse! कभी भी आपको कोई aur doubt हो या सवाल हो तो कॉल कर लीजिएगा। Thank you for calling AVS International.'
         ],
         'Category': [
             'introductions',
-            'klariqo_explanation', 
-            'key_features',
-            'pricing'
+            'school_info',
+            'admission_process', 
+            'fees_and_pricing',
+            'school_facilities',
+            'transport_and_bus',
+            'school_activities',
+            'school_events',
+            'conclusion'
         ],
         'Alternate_Version': [
-            'intro_klariqo1.2.mp3',
+            'nisha_introduction_outbound.mp3',
             '',
-            'best_feature_concurrent_call.mp3',
-            'klariqo_pricing1.2.mp3'
+            'admission_process_transfer.mp3',
+            '',
+            '',
+            'bus_ask_location.mp3',
+            '',
+            'annual_function_events.mp3',
+            ''
         ]
     }
     
