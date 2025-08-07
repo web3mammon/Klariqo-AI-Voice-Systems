@@ -215,10 +215,31 @@ Announcing scholarship availability	nisha_introduction_outbound.mp3 + scholarshi
         # Get current session context
         session_context = session.get_session_context()
         
+        # Get current date, day, and time for context-aware responses
+        from datetime import datetime
+        now = datetime.now()
+        current_date = now.strftime("%d %B %Y")  # e.g., "15 December 2024"
+        current_day = now.strftime("%A")  # e.g., "Sunday"
+        current_time = now.strftime("%I:%M %p")  # e.g., "02:30 PM"
+        current_hour = now.hour  # 24-hour format for logic
+        
+        # School timing logic
+        school_open_hour = 8  # 8 AM
+        school_close_hour = 15  # 3 PM
+        is_school_open = school_open_hour <= current_hour < school_close_hour
+        is_weekend = current_day in ["Saturday", "Sunday"]
+        
         context_prompt = f"""
 🧠 CONVERSATION MEMORY:
 Recently played files (DON'T repeat): {', '.join(recent_files)}
 Recent conversation: {recent_conversation}
+
+📅 CURRENT DATE & TIME CONTEXT:
+Date: {current_date} ({current_day})
+Time: {current_time}
+School Status: {'Open' if is_school_open and not is_weekend else 'Closed'}
+- School hours: 8:00 AM - 3:00 PM (Monday to Friday)
+- Weekend: {current_day} is {'weekend' if is_weekend else 'weekday'}
 
 📋 CURRENT SESSION VARIABLES:
 {session_context}
@@ -230,6 +251,8 @@ Recent conversation: {recent_conversation}
 - If admission_class is known and user asks about fees, use fees_ask_class.mp3 then mention specific fees for that class
 - If student_location is provided and user asks about transport, use bus_fees.mp3 with location context
 - If student_age is known, use admission_age_eligibility.mp3 for age-related queries
+- If user asks about visiting today and school is closed, use GENERATE to explain current status
+- If user asks about timings, consider current time and day for context
 
 Apply the rules from your system prompt. Choose appropriate files or GENERATE response."""
         
